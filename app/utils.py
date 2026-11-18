@@ -1,0 +1,283 @@
+"""
+Utility functions for the Tekmovanja app.
+"""
+
+import os
+from datetime import datetime
+from typing import List
+from app.settings import app_config
+from app.database import get_session
+from app.models import School, Discipline, Pupil, CompetitionEvent, Record, StartList, SchoolStatus
+
+DB = None
+
+
+def get_db_session():
+    """Get a database session."""
+    global DB
+    if DB is None:
+        from app.database import get_session
+        DB = get_session()
+    return DB()
+
+
+def generate_csv_template() -> str:
+    """
+    Generate a CSV template for school data collection.
+    """
+    # Based on the requirements in the prompt
+    template = ("First Name,Last Name,School,Grade,Gender,Discipline(s),Event Date (MM/DD/YYYY),Time (seconds),Position (1-30),Notes\n"
+                "e.g., Ana,Novak,OŠ Žirovnica,2.r,Ž,tek 60m Ž,05/20/2026,10.5,5,\n")
+    return template
+
+
+def get_active_schools() -> List[dict]:
+    """Get list of active schools in dict format for API responses."""
+    session = get_db_session()
+    schools = session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "email": s.email,
+        }
+        for s in schools
+    ]
+
+
+def get_active_disciplines() -> List[dict]:
+    """Get list of disciplines that have historical events."""
+    session = get_db_session()
+    disciplines = session.query(Discipline).all()
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "gender": d.gender,
+            "applicable_grades": d.applicable_grades,
+        }
+        for d in disciplines
+    ]
+
+
+def get_applicable_disciplines_for_grade(grade: str) -> List[dict]:
+    """Get disciplines applicable for a grade based on discipline records."""
+    session = get_db_session()
+    applicable = []
+    grade_str = grade.strip()
+    if grade_str not in ("2.r", "3.r"):
+        return applicable
+    
+    disciplines = session.query(Discipline).all()
+    for d in disciplines:
+        # Simple check: if grade appears in applicable_grades string
+        applicable_grades = d.applicable_grades.strip().split(",")
+        if any(g.strip() == grade_str for g in applicable_grades):
+            applicable.append({
+                "id": d.id,
+                "name": d.name,
+                "gender": d.gender,
+            })
+    return applicable
+
+
+def check_record_eligible(pupil_id: int, discipline_id: int, time: float) -> tuple:
+    """
+    Check if a new time is eligible to create a record.
+    Returns (is_new_record, list_of_existing_records_that_tie_or_are_beaten)
+    """
+    session = get_db_session()
+    # Get records for pupil in discipline
+    records = session.query(Record).filter(
+        Record.pupil_id == pupil_id,
+        Record.discipline_id == discipline_id
+    ).order_by(Record.date_recorded).all()
+    
+    # Find current best
+    current_best = None
+    for r in records:
+        if current_best is None or r.time < current_best.time:
+            current_best = r
+    
+    # Compare with new time
+    new_beats_best = False
+    new_records_needed = []
+    
+    if current_best:
+        if time < current_best.time - 0.001:  # strictly better
+            new_records_needed.append(current_best)
+            new_beats_best = True
+        elif abs(time - current_best.time) < 0.001:  # tie within tolerance
+            new_records_needed.append(current_best)
+    
+    return new_beats_best, new_records_needed
+
+
+def send_email(
+    subject: str,
+    sender: str,
+    recipients: List[str],
+    body: str,
+    attachments: List[tuple] = None,
+):
+    """
+    Send email via SMTP.
+    In production, this uses the SMTP settings from app_config.
+    For development/demo, prints the message.
+    """
+    from app.settings import app_config
+    
+    if not recipients or len(recipients) == 0:
+        print("No recipients provided")
+        return
+    
+    # Check if SMTP credentials are configured
+    if not app_config.smtp_user or not app_config.smtp_password:
+        print(f"SMTP credentials NOT CONFIGURED! Sender: {sender}")
+        print(f"Recipients: {recipients}")
+        print(f"Subject: {subject}")
+        print(f"Body:\n{body}")
+        return
+    
+    # In demo mode, just print the message
+    print(f"\n=== EMAIL ===\nFrom: {sender}\nTo: {', '.join(recipients)}\nSubject: {subject}\nBody:\n{body}")
+    if attachments:
+        print(f"\nAttachments:\n{', '.join([f'{a[0]} ({a[2]})' for a in attachments])}")
+    
+    return {"status": "queued", "message": "Email sent (demo)"}
+
+
+def generate_results_pdf(events, discipline_id=None, school_id=None):
+    """
+    Generate results PDF content.
+    Returns HTML string that can be converted to PDF.
+    """
+    import datetime
+    
+    # Get related data
+    session = get_db_session()
+    
+    # Events data
+    event_rows = []
+    for ev in events:
+        pupil = session.query(Pupil).get(ev.pupil_id) if ev.pupil_id else None
+        discipl = session.query(Discipline).get(ev.discipline_id) if ev.discipline_id else None
+        
+        pupil_name = f"{pupil.first_name} {pupil.last_name}" if pupil else "Unknown Pupil"
+        disc_name = discipl.name if discipl else "Unknown Discipline"
+        
+        row = {
+            "pupil": pupil_name,
+            "discipline": disc_name,
+            "time_seconds": f"{ev.time:.2f}",
+            "position": ev.position,
+            "notes": ev.notes or "",
+        }
+        event_rows.append(row)
+    
+    # Current date
+    now = datetime.datetime.utcnow()
+    
+    # Generate HTML
+    html = """
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Tekmovanja Rezultati</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1 { color: #2c3e50; }
+            h2 { color: #3498db; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .footer { margin-top: 40px; font-size: 0.9em; color: #666; }
+        </style>
+    </head>
+    <body>
+        <h1>Tekmovanja Rezultati</h1>
+        <p><strong>Datum:</strong> {}</p>
+        <p><strong>Odaril:</strong> Tekmovanja</p>
+        
+        <h2>Rezultati</h2>
+        <table>
+            <tr>
+                <th>Pupil</th>
+                <th>Discipline</th>
+                <th>Dolžina / čas (s)</th>
+                <th>Pozicija</th>
+                <th>Opis</th>
+            </tr>
+        """.format(now.strftime("%Y-%m-%d %H:%M"))
+    
+    for row in event_rows:
+        html += (
+            f"<tr>\n"
+            f"    <td>{row['pupil']}</td>\n"
+            f"    <td>{row['discipline']}</td>\n"
+            f"    <td>{row['time_seconds']}</td>\n"
+            f"    <td>{row['position']}</td>\n"
+            f"    <td>{row['notes']}</td>\n"
+            f"</tr>\n"
+        )
+    
+    html += "</table>\n"
+    
+    html += """
+        <div class="footer">
+            <p>Zarni izvedenje <br> Tekmovanja Primarni šola</p>
+        </div>
+    </body>
+    </html>
+    """.format(now.strftime("%Y-%m-%d %H:%M"))
+    
+    return html
+
+
+def create_start_list(discipline_id: int, grade: str, event_date, pupil_ids: List[int]):
+    """
+    Create a start list entry and associate pupils.
+    """
+    from app.database import get_db_session
+    from app.models import StartList
+    from datetime import datetime
+    
+    session = get_db_session()
+    
+    # Validate grade
+    from app.models import SchoolStatus
+    if grade not in ("2.r", "3.r"):
+        raise ValueError("Grade must be 2.r or 3.r")
+    
+    # Parse event_date (ISO format or string)
+    from dateutil import parser
+    try:
+        event_dt = parser.parse(event_date).astimezone()
+    except:
+        # Try simple datetime
+        from datetime import datetime
+        if isinstance(event_date, str):
+            event_dt = datetime.fromisoformat(event_date.replace('Z', '+00:00'))
+        else:
+            event_dt = datetime.utcnow()
+    
+    # Check pupils exist
+    pupils = session.query(Pupil).filter(Pupil.id.in_(pupil_ids)).all()
+    if len(pupils) != len(pupil_ids):
+        # Some pupils not found
+        existing_ids = {p.id for p in pupils}
+        missing_ids = set(pupil_ids) - existing_ids
+        return {"error": f"Pupils with IDs {missing_ids} not found"}, None
+    
+    # Create start list
+    start_list = StartList(
+        discipline_id=discipline_id,
+        grade=grade,
+        event_date=event_dt,
+    )
+    session.add(start_list)
+    session.commit()
+    
+    return {"message": f"Start list created for discipline {discipline_id}, grade {grade} with {len(pupils)} pupils"}, start_list
+
