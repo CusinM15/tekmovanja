@@ -781,7 +781,9 @@ function izbrisiStartno(id){
 
 /* ================= CSV / POŠTA / SMTP ================= */
 function prenesiPredlogoCsv(){
-  var vsebina = 'First Name,Last Name,School,Grade,Gender\nIme,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž)\n';
+  // BOM (\ufeff) na začetku: Excel potem pravilno odpre UTF-8 in Š/Ž/Č niso pokvarjeni.
+  var vsebina = '\ufeffFirst Name,Last Name,School,Grade,Gender\n' +
+    'Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž)\n';
   var blob = new Blob([vsebina], {type: 'text/csv;charset=utf-8'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

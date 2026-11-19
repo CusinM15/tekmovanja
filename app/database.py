@@ -29,14 +29,9 @@ def get_engine():
     if _engine is None:
         path = app_config.sqlite_path
         if not path or path == ":memory:":
-            # Trajna baza: najprej docker volumen (TEKMOVANJA_DATA_DIR), sicer ob projektu.
-            data_dir = os.environ.get("TEKMOVANJA_DATA_DIR", "")
-            if data_dir:
-                Path(data_dir).mkdir(parents=True, exist_ok=True)
-                path = str(Path(data_dir) / "tekmovanja.db")
-            else:
-                project_dir = Path(__file__).resolve().parent.parent
-                path = str(project_dir / "tekmovanja.db")
+            # Trajna baza: datoteka v mapi projekta (podatki ostanejo po zaprtju appa).
+            project_dir = Path(__file__).resolve().parent.parent
+            path = str(project_dir / "tekmovanja.db")
         _engine = create_engine(f"sqlite:///{path}", echo=False, future=True)
     return _engine
 

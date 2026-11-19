@@ -40,22 +40,24 @@ def _seed_defaults():
 
     db = get_db()
     try:
-        # --- Šole (iz prvi_prompt.md / settings.py) ---
-        if db.query(School).count() == 0:
-            for ime, email in app_config.default_schools.items():
+        # --- Šole (iz prvi_prompt.md / settings.py), idempotentno ---
+        obstojece = {s.name for s in db.query(School).all()}
+        for ime, email in app_config.default_schools.items():
+            if ime not in obstojece:
                 db.add(School(name=ime, email=email, status=SchoolStatus.ACTIVE.value))
-            db.commit()
+        db.commit()
 
-        # --- Discipline (iz prvi_prompt.md / settings.py) ---
-        if db.query(Discipline).count() == 0:
-            for ime, razredi in app_config.default_disciplines.items():
+        # --- Discipline (iz prvi_prompt.md / settings.py), idempotentno ---
+        obstojece_d = {d.name for d in db.query(Discipline).all()}
+        for ime, razredi in app_config.default_disciplines.items():
+            if ime not in obstojece_d:
                 spol = "Ž" if ime.strip().endswith(("Ž", "ž")) else "M"
                 db.add(Discipline(name=ime, gender=spol,
                                   applicable_grades=",".join(razredi)))
-            db.commit()
+        db.commit()
 
-        # --- Učenci in rekordi samo, če so šole+discipline obstajale in ni učencev ---
-        if db.query(Pupil).count() == 0 and db.query(School).count() > 0 and db.query(Discipline).count() > 0:
+        # --- Učenci in rekordi samo, če še ni nobenega učenca ---
+        if db.query(Pupil).count() == 0:
             sole = {s.name: s.id for s in db.query(School).all()}
             disc = {d.name: d.id for d in db.query(Discipline).all()}
 
@@ -779,11 +781,8 @@ def generate_csv_template():
     """Generate blank CSV template for school data collection."""
     # CSV header based on required fields from documents
     # Based on prompt: "attach a blank CSV template" and "explain how to fill it in"
-    csv_content = "First Name,Last Name,School,Grade,Gender,\n" \
-                  "Name (first),Name (last),School (one of: list of active schools),Grade (2.r or 3.r),Gender (M or Ž),\n" \
-                  "# of pupils in Grade,Discipline(s) (tick for each),Event Date (MM/DD/YYYY),Time (seconds for running/jumping),Position (if known),\n" \
-                  "Please complete this form and return via school's email.\n" \
-                  "Template format can be copied and adapted per school."
+    csv_content = "\ufeffFirst Name,Last Name,School,Grade,Gender\n" \
+                  "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž)\n"
     
     # For file download
     from fastapi import File, UploadFile, Form
@@ -871,39 +870,54 @@ async def import_csv(
     if not rows or len(rows) < 1:
         raise HTTPException(status_code=400, detail="Empty CSV file")
     
-    # Validate first row headers
-    headers = rows[0]
-    # Expected headers from template
-    # We'll be flexible but validate required fields
-    required_headers = {"First Name", "Last Name", "School", "Grade", "Gender"}
-    if not required_headers.issubset(set(h.strip().lower() for h in headers)):
-        # Get active schools
-        db_session = get_db()
-        active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
-        active_school_names = {s.name for s in active_schools}
-        school_headers = {"School", "school"}
-        if not school_headers.intersection(set(h.strip().lower() for h in headers)):
-            raise HTTPException(
-                status_code=400, 
-                detail="Missing required headers: First Name, Last Name, School, Grade, Gender"
-            )
-        # Partial match allowed
-    
+    # Odstrani UTF-8 BOM iz prve celice prve vrstice (če obstaja)
+    if rows and rows[0]:
+        rows[0][0] = rows[0][0].lstrip("\ufeff")
+
+    # Najdi vrstico z dejanskimi angleškimi headerji kode (ne slovenski primer)
+    header_idx = None
+    for idx, r in enumerate(rows):
+        nizki = {c.strip().lower() for c in r if c.strip()}
+        if "first name" in nizki and "last name" in nizki and "school" in nizki:
+            header_idx = idx
+            break
+    if header_idx is None:
+        raise HTTPException(status_code=400, detail="CSV manjka glava: First Name, Last Name, School, Grade, Gender")
+    headers = [h.strip().lower() for h in rows[header_idx]]
+
+    def col(key):
+        try:
+            return headers.index(key)
+        except ValueError:
+            return -1
+
+    idx_first = col("first name"); idx_last = col("last name")
+    idx_school = col("school"); idx_grade = col("grade"); idx_gender = col("gender")
+    if -1 in (idx_first, idx_last):
+        raise HTTPException(status_code=400, detail="CSV manjka stolpca 'First Name' ali 'Last Name'")
+
     errors = []
     records = []
     
-    # Process rows (skip header)
-    for i, row in enumerate(rows[1:], start=2):  # row 2+
+    # Preskoči glavo in slovenski primer vrstico ("Ime,Priimek,Šola...")
+    data_rows = rows[header_idx+1:]
+    for i, row in enumerate(data_rows, start=header_idx+2):
+        if not row or not any(c.strip() for c in row):
+            continue
+        # Preskoči slovenski primer (prvi celica Ime ali priimek)
+        prvi = (row[0].strip().lower() if row else "")
+        if prvi in ("ime", "priimek"):
+            continue
         if len(row) < 2:  # at least First Name and Last Name
-            errors.append(f"Row {i}: Not enough columns")
+            errors.append(f"Vrstica {i}: premalo stolpcev")
             continue
         
         # Extract field values
-        first_name = row[headers.index("First Name") or headers.index("first") or 0].strip()
-        last_name = row[headers.index("Last Name") or headers.index("last") or 1].strip()
-        school_name = row[headers.index("School") or headers.index("school") or 2].strip()
-        grade = row[headers.index("Grade") or headers.index("grade") or 3].strip()
-        gender = row[headers.index("Gender") or headers.index("gender") or 4].strip().upper()
+        first_name = row[idx_first].strip()
+        last_name = (row[idx_last].strip() if idx_last >= 0 and idx_last < len(row) else "")
+        school_name = (row[idx_school].strip() if idx_school >= 0 and idx_school < len(row) else "")
+        grade = (row[idx_grade].strip() if idx_grade >= 0 and idx_grade < len(row) else "")
+        gender = (row[idx_gender].strip() if idx_gender >= 0 and idx_gender < len(row) else "").upper()
         
         # Validate required fields
         if not first_name or len(first_name) < 2:
@@ -933,8 +947,9 @@ async def import_csv(
                 school = School(name=school_name.strip(), email="", status=SchoolStatus.INACTIVE.value)
                 db.add(school)
                 db.commit()
-                school_id = school.id
-            school_id = school.id
+        if school is None:
+            continue  # ni mogoče, a varno
+        school_id = school.id
         
         # Validate discipline tick (optional)
         # For simplicity, we'll just import pupils first

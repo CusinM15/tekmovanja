@@ -13,42 +13,7 @@ vse poteka s kliki, brez ukazne vrstice.
 
 ---
 
-## 1. Zagon z Dockerjem (najlažje)
-
-Potrebujete samo nameščen **Docker** (in Docker Compose).
-
-```bash
-docker compose up -d --build
-```
-
-Nato v brskalniku odprite: **http://127.0.0.1:8000/**
-
-Ustavitev:
-
-```bash
-docker compose down
-```
-
-Podatki so shranjeni v Docker volumnu `tekmovanja_data` in ostanejo tudi po
-ustavitvi/ponovnem zagonu. Če želite začeti povsem od začetka:
-
-```bash
-docker compose down -v
-```
-
-Brez Docker Compose lahko uporabite kar `docker run`:
-
-```bash
-docker build -t tekmovanja .
-docker run -d --name tekmovanja -p 8000:8000 \
-  -e TEKMOVANJA_DATA_DIR=/app/data \
-  -v tekmovanja_data:/app/data \
-  tekmovanja
-```
-
----
-
-## 2. Zagon brez Dockerja (lokalno, za razvoj)
+## 1. Zagon (lokalno)
 
 ### Predpogoji
 
@@ -69,7 +34,7 @@ Po nekaj sekundah odprite v brskalniku: **http://127.0.0.1:8000/**
 
 ---
 
-## 3. Kako uporabljati (vmesnik)
+## 2. Kako uporabljati (vmesnik)
 
 Vse je v enem oknu z zavihki:
 
@@ -80,21 +45,27 @@ Vse je v enem oknu z zavihki:
 | 👦 Učenci | Dodajanje, urejanje, brisanje, iskanje, uvoz CSV |
 | 🏃 Discipline | Dodajanje, urejanje, odstranjevanje disciplin |
 | ⏱️ Rezultati | Vnos, urejanje in brisanje rezultatov tekmovanja |
-| 🥇 Rekordi | Dodajanje, urejanje in brisanje najboljših rezultatov |
+| 🥇 Rekordi | Dodajanje, urejanje in brisanje najboljših rezultatov + pogled "Najboljši po disciplinah" |
 | 📋 Štartne liste | Ustvarjanje štartnih list (disciplina, razred, datum, učenci) |
 | 🗄️ Uvoz in pošta | CSV predloga, uvoz, pošiljanje povabil/rezultatov, SMTP, brisanje podatkov |
 
 ### Ob prvem zagonu
 
-Baza se samodejno napolni z:
+Baza se samodejno napolni s:
 
 - **5 šolami** (OŠ Žirovnica, OŠ Prežihov Voranc, OŠ Koroška Bela,
   OŠ Josipa Vandota Kranjska Gora, OŠ 16. decembra Mojstrana),
 - **8 disciplinami** (tek 60m, tek 400m, skok v daljino, met vorteksa — za fante in punce),
 - **10 vzorčnimi učenci**, nekaj rezultati in rekordi — da lahko takoj preizkusite app.
 
-Če želite začeti s prazno bazo, izbrišite datoteko `tekmovanja.db`
-(oz. `docker compose down -v`) in znova zaženite.
+Seed je **idempotenten**: tudi če določena šola ali disciplina manjka, se ob
+naslednjem zagonu doda. Učenci in rekordi se dodajo samo, če jih še ni.
+
+### Urejanje učencev
+
+Pri vsakem učencu lahko s klikom:
+- **✏️ Uredi** — popraviš tipkarsko napako v imenu, priimku, razredu, spolu ali šoli,
+- **🗑️ Izbriši** — trajno odstraniš učenca (skupaj z njegovimi rezultati in rekordi).
 
 ### Brisanje podatkov tekmovanja
 
@@ -104,16 +75,15 @@ izbriše učence in rezultate tekmovanja. **Šole, discipline in rekordi
 
 ---
 
-## 4. Kje so podatki
+## 3. Kje so podatki
 
-- **Docker:** v volumnu `tekmovanja_data` (SQLite datoteka `tekmovanja.db`).
-- **Lokalno:** v mapi projekta kot `tekmovanja.db` (gitignorano).
+- Podatki so v datoteki `tekmovanja.db` v mapi projekta (gitignorano).
 - Nastavitve SMTP (če jih shranite v vmesniku) so v `config.json` zunaj
   mape projekta — **gesla se nikoli ne shranjujejo v git**.
 
 ---
 
-## 5. Pošiljanje e-pošte (SMTP, neobvezno)
+## 4. Pošiljanje e-pošte (SMTP, neobvezno)
 
 V zavihku **Uvoz in pošta → ⚙️ Nastavitve e-pošte** vnesite svoj Arnes
 poštni račun:
@@ -128,7 +98,7 @@ in po koncu tekmovanja še **rezultate**.
 
 ---
 
-## 6. Uvoz učencev iz CSV
+## 5. Uvoz učencev iz CSV
 
 1. V zavihku *Uvoz in pošta* kliknite **📥 Prenesi prazno predlogo (CSV)**.
 2. Predlogo pošljete šolam; one jo izpolnijo in vrnejo.
@@ -139,21 +109,21 @@ Stolpci: `First Name, Last Name, School, Grade, Gender`
 
 ---
 
-## 7. Odpravljanje težav
+## 6. Odpravljanje težav
 
 | Težava | Rešitev |
 |---|---|
-| Vrata 8000 so zasedena | Drug program uporablja 8000. Ustavite ga ali spremenite port v `docker-compose.yml` / `run.py`. |
+| Vrata 8000 so zasedena | Drug program uporablja 8000. Ustavite ga ali spremenite port v `run.py`. |
 | `Errno 98: Address already in use` | Kot zgoraj; na Windows: `netstat -ano | findstr :8000`, končajte PID. |
-| `ModuleNotFoundError` (lokalno) | Ponovite `pip install -r requirements.txt`. |
-| Podatki se ne shranijo (docker) | Preverite, da je volumen `tekmovanja_data` priklopljen (docker compose up). |
+| `ModuleNotFoundError` | Ponovite `pip install -r requirements.txt`. |
 | Star UI v brskalniku | Osvežite z **Ctrl+Shift+R** (trdi reload). |
+| Podatki šol se ne pokažejo | Preverite, da je `tekmovanja.db` v mapi projekta; seed se izvede ob zagonu. |
 
 ---
 
-## 8. Za razvijalce
+## 7. Za razvijalce
 
-- Vstopna točka: `run.py` (uvicorn, `reload=True`) oz. `uvicorn app.main:app` v dockerju.
+- Vstopna točka: `run.py` (uvicorn, `reload=True`).
 - Koda: `app/main.py` (vsi API konci), `app/models.py` (podatkovni modeli),
   `app/database.py` (SQLite), `app/settings.py` (nastavitve + privzeti podatki),
   `static/index.html` (celoten vmesnik, brez build koraka).
