@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from app.models import Base
@@ -27,12 +28,20 @@ def get_engine():
     in-memory connection."""
     global _engine
     if _engine is None:
-        path = app_config.sqlite_path
-        if not path or path == ":memory:":
-            # Trajna baza: datoteka v mapi projekta (podatki ostanejo po zaprtju appa).
-            project_dir = Path(__file__).resolve().parent.parent
-            path = str(project_dir / "tekmovanja.db")
-        _engine = create_engine(f"sqlite:///{path}", echo=False, future=True)
+        # Trajna baza je VEDNO datoteka v mapi projekta. Ta presega morebiten
+        # ":memory:" iz configa, da se podatki ne izgubijo ob osvežitvi/zaprtju.
+        project_dir = Path(__file__).resolve().parent.parent
+        path = str(project_dir / "tekmovanja.db")
+        # StaticPool + check_same_thread=False: ena deljena povezava skozi cel
+        # proces. SQLite to obožuje — ni QueuePool limita (5), ki ga je prej
+        # izčrpalo po nekaj requestih in app je zmrznil.
+        _engine = create_engine(
+            f"sqlite:///{path}",
+            echo=False,
+            future=True,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     return _engine
 
 

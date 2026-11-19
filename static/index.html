@@ -161,6 +161,7 @@
     <p class="opis">Vnesite rezultate učencev po posameznih disciplinah.</p>
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
+      <a class="gumb gumb-orange" href="/results-pdf" target="_blank">📄 Izvozi PDF</a>
     </div>
     <table>
       <thead><tr><th>Učenec</th><th>Disciplina</th><th>Čas / dolžina</th><th>Mesto</th><th>Opombe</th><th></th></tr></thead>
@@ -726,7 +727,10 @@ function natovoriStartne(){
         '<td>' + esc(l.discipline_name || '—') + '</td>' +
         '<td>' + esc(l.grade) + '</td>' +
         '<td>' + datumLepo(l.event_date) + '</td>' +
-        '<td style="text-align:right"><span class="povezava rdeca" onclick="izbrisiStartno(' + l.id + ')">🗑️ Izbriši</span></td></tr>';
+        '<td style="text-align:right">' +
+          '<a class="povezava" href="/start-lists/' + l.id + '/pdf" target="_blank">📄 PDF</a>&nbsp;&nbsp;' +
+          '<span class="povezava rdeca" onclick="izbrisiStartno(' + l.id + ')">🗑️ Izbriši</span>' +
+        '</td></tr>';
     }
     $('tabela-startne').innerHTML = vrstice;
     $('prazno-startne').style.display = seznami.length ? 'none' : 'block';

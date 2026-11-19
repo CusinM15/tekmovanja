@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 # Import from SQLAlchemy ORM
 try:
-    from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, ForeignKey, UniqueConstraint
+    from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, ForeignKey, UniqueConstraint, Table
     from sqlalchemy.orm import relationship
     from sqlalchemy.ext.declarative import declarative_base
 except ImportError:
@@ -131,6 +131,15 @@ class Record(Base):
         return f"<Record {self.id}: discipline={self.discipline_id}, pupil={self.pupil_id}, time={self.time}s>"
 
 
+# Povezovalna tabela: štartna lista <-> učenci
+start_list_pupils = Table(
+    "start_list_pupils",
+    Base.metadata,
+    Column("start_list_id", Integer, ForeignKey("start_lists.id"), primary_key=True),
+    Column("pupil_id", Integer, ForeignKey("pupils.id"), primary_key=True),
+)
+
+
 class StartList(Base):
     """Start list for a discipline and grade combination."""
     __tablename__ = "start_lists"
@@ -143,16 +152,12 @@ class StartList(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     discipline = relationship("Discipline")
+    pupils = relationship("Pupil", secondary=start_list_pupils)
 
     # Unique constraint: one start list per discipline+grade per date
     __table_args__ = (
         # UniqueConstraint("discipline_id", "grade", "event_date", name="uk_startlist_discipline_grade_date"),
     )
-
-    # Relationships (added in app context)
-    discipline = None
-    grade = None
-    pupils = []
 
     def __repr__(self):
         return f"<StartList {self.id}: discipline={self.discipline_id}, grade={self.grade}, date={self.event_date}>"

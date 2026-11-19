@@ -28,9 +28,14 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Get session dependency
+# Get session dependency — generator, da se session VEDNO zapre po requestu
+# (brez tega se QueuePool izčrpa in app po nekaj klicih zmrzne)
 def get_db(session_locator=get_session):
-    return session_locator()
+    db = session_locator()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def _seed_defaults():
@@ -38,7 +43,8 @@ def _seed_defaults():
     da lahko uporabnik takoj preizkusi app. Če tabela že ima podatke, se ne dotika."""
     from app.models import School, Discipline, Pupil, CompetitionEvent, Record, SchoolStatus
 
-    db = get_db()
+    # Direktna seja (ne prek Depends generatorja); jo zapremo v finally.
+    db = get_session()
     try:
         # --- Šole (iz prvi_prompt.md / settings.py), idempotentno ---
         obstojece = {s.name for s in db.query(School).all()}
@@ -206,9 +212,9 @@ def add_school(
 @app.put("/schools/{school_id}", response_model=dict, summary="Update school")
 def update_school(
     school_id: int,
-    name: Optional[str] = None,
-    email: Optional[str] = None,
-    status: Optional[str] = None,
+    name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    status: Optional[str] = Form(None),
     db=Depends(get_db)
 ):
     """Update school details."""
@@ -334,9 +340,9 @@ def add_discipline(
 @app.put("/disciplines/{discipline_id}", response_model=dict, summary="Update discipline")
 def update_discipline(
     discipline_id: int,
-    name: Optional[str] = None,
-    gender: Optional[str] = None,
-    applicable_grades: Optional[str] = None,
+    name: Optional[str] = Form(None),
+    gender: Optional[str] = Form(None),
+    applicable_grades: Optional[str] = Form(None),
     db=Depends(get_db)
 ):
     """Update discipline details."""
@@ -715,12 +721,13 @@ def create_start_list(
     discipline_id: int = Form(...),
     grade: str = Form(...),
     event_date: str = Form(...),  # ISO format datetime
-    pupil_ids: List[int] = Query(...),  # list of pupil IDs
+    pupil_ids: str = Form(""),   # CSV števil učencev, npr. "1,5,9"
     db=Depends(get_db)
 ):
-    """Create a start list for a discipline and grade."""
+    """Create a start list for a discipline and grade, linked to pupils."""
     discipline = db.query(Discipline).get(discipline_id)
-    pupil_list = db.query(Pupil).filter(Pupil.id.in_(pupil_ids)).all()
+    ids = [int(x.strip()) for x in pupil_ids.split(",") if x.strip()]
+    pupil_list = db.query(Pupil).filter(Pupil.id.in_(ids)).all() if ids else []
     
     if not discipline:
         raise HTTPException(status_code=404, detail="Discipline not found")
@@ -732,29 +739,28 @@ def create_start_list(
         raise HTTPException(status_code=400, detail="Grade must be 2.r or 3.r")
     
     # Decode event_date to datetime if needed
-    # For simplicity, parse from ISO string
     from datetime import datetime
     try:
         event_dt = datetime.fromisoformat(event_date.replace('Z', '+00:00'))
     except:
         raise HTTPException(status_code=400, detail="Invalid date format. Use ISO format (YYYY-MM-DDTHH:MM:SS).")
     
-    # Create start list
+    # Create start list linked to pupils
     start_list = StartList(
         discipline_id=discipline_id,
         grade=grade,
         event_date=event_dt,
     )
+    start_list.pupils = pupil_list
     db.add(start_list)
     db.commit()
     
-    # Associate pupils with start list (this would link via relationship or separate table)
-    # For now, just return the list
     return {
         "id": start_list.id,
         "discipline_id": discipline_id,
         "grade": grade,
         "event_date": event_date,
+        "pupil_count": len(pupil_list),
         "created_at": start_list.created_at.isoformat(),
     }
 
@@ -770,6 +776,8 @@ def list_start_lists(db=Depends(get_db)):
             "grade": l.grade,
             "event_date": l.event_date.isoformat(),
             "created_at": l.created_at.isoformat(),
+            "pupil_count": len(l.pupils),
+            "pupil_names": [f"{p.first_name} {p.last_name}" for p in l.pupils],
         }
         for l in lists
     ]
@@ -790,8 +798,11 @@ def generate_csv_template():
     # We'll just return as JSON for now; in production would serve file
     
     # Get active schools for email
-    db = get_db()
-    active_schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
+    db = get_session()
+    try:
+        active_schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
+    finally:
+        db.close()
     
     csv_info = {
         "template": csv_content,
@@ -803,7 +814,7 @@ def generate_csv_template():
     }
     return {
         "csv_template": csv_info["template"],
-        "active_schools": active_schools,
+        "active_schools": csv_info["active_schools"],
         "instructions": csv_info["instructions"]
     }
 
@@ -812,7 +823,7 @@ def send_invitations_emails(db=Depends(get_db)):
     """Send email invitations to all active schools with CSV template."""
     from app.utils import send_email
     
-    db_session = db  # reuse
+    db_session = db  # reuse (prek Depends, samodejno zaprt)
     active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     
     if not active_schools:
@@ -1019,108 +1030,24 @@ async def import_csv(
 @app.get("/results-pdf")
 def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional[int] = None,
                         db=Depends(get_db)):
-    """Generate results PDF. In production, would use reportlab or weasyprint."""
-    from app.utils import generate_results_pdf
-    
-    # Simple approach: return HTML with basic layout
-    # In real app, convert to PDF
-    # For now, return HTML
-    events = []
+    """Generira PRAVI PDF z rezultati (reportlab) in ga vrne kot prenos."""
+    from app.utils import results_pdf_bytes
+    from starlette.responses import Response
+
     if event_id:
         events = db.query(CompetitionEvent).filter(CompetitionEvent.id == event_id).all()
     elif discipline_id:
         events = db.query(CompetitionEvent).filter(CompetitionEvent.discipline_id == discipline_id).all()
     else:
-        # All events
         events = db.query(CompetitionEvent).all()
-    
-    # Generate basic HTML
-    from datetime import datetime
-    now = datetime.utcnow()
-    
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Tekmovanja Rezultati</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            h1 {{ color: #2c3e50; }}
-            h2 {{ color: #3498db; }}
-            table {{ border-collapse: collapse; width: 100%; margin-top: 20px; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-            th {{ background-color: #f2f2f2; }}
-            tr:nth-child(even) {{ background-color: #f9f9f9; }}
-            .footer {{ margin-top: 40px; font-size: 0.9em; color: #666; }}
-        </style>
-    </head>
-    <body>
-        <h1>Tekmovanja Rezultati</h1>
-        <p><strong>Datum:</strong> {now.strftime('%Y-%m-%d %H:%M')}</p>
-        
-        {html_table if events else '<p>No results found</p>'}
-        
-        <div class="footer">
-            <p>Generated by Tekmovanja - Primary School Athletics Manager</p>
-        </div>
-    </body>
-    </html>
-    """
-    
-    # Simple table generation
-    if events:
-        rows = []
-        for ev in events:
-            pupil = ev.pupil and ev.pupil or None
-            # Join with Pupil info
-            from app.models import Pupil
-            pupil_obj = db.query(Pupil).get(ev.pupil_id) if ev.pupil_id else None
-            pupil_name = f"{pupil_obj.first_name} {pupil_obj.last_name}" if pupil_obj else "Unknown"
-            discipl = db.query(Discipline).get(ev.discipline_id)
-            disc_name = discipl.name if discipl else "Unknown"
-            row_html = f'''
-            <tr>
-                <td>Pupil</td>
-                <td>{pupil_name}</td>
-                <td>{ev.pupil_id}</td>
-            </tr>
-            <tr>
-                <td>Discipline</td>
-                <td>{disc_name}</td>
-                <td>{ev.discipline_id}</td>
-            </tr>
-            <tr>
-                <td>Time</td>
-                <td>{ev.time:.2f}s</td>
-                <td>{ev.time}</td>
-            </tr>
-            <tr>
-                <td>Position</td>
-                <td>{ev.position}</td>
-                <td>{ev.position}</td>
-            </tr>
-            <tr>
-                <td>Notes</td>
-                <td>{ev.notes or 'N/A'}</td>
-                <td></td>
-            </tr>
-            '''
-            rows.append(row_html)
-        table_html = "<br>".join(rows)
-    else:
-        table_html = "<p>No events imported yet.</p>"
-    
-    html_content = html_content.replace("{html_table}", table_html)
-    
-    # In real implementation, we'd convert to PDF
-    # For now, serve as HTML with .pdf file extension (will download)
-    filename = f"results_{now.strftime('%Y%m%d_%H%M')}.html"
-    
-    return FileResponse(
-        content=html_content.encode('utf-8'),
-        filename=filename,
-        media_type="application/pdf",  # Will appear as PDF in browser
-        content_disposition="attachment"
+
+    pdf = results_pdf_bytes(events, title="Tekmovanja — rezultati")
+    from datetime import datetime as _dt
+    filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 @app.post("/send-results", response_model=dict, summary="Email results PDF to active schools")
@@ -1130,8 +1057,8 @@ def email_results(
     """Generate results PDF and email to active schools."""
     from app.utils import generate_results_pdf, send_email
     
-    # Get all events
-    db_session = get_db()
+    # Get all events (db prihaja prek Depends — samodejno zaprt)
+    db_session = db
     events = db_session.query(CompetitionEvent).all()
     
     if not events:
@@ -1422,7 +1349,8 @@ def update_event(
         event.discipline_id = discipline_id
     event.updated_at = datetime.utcnow()
     db.commit()
-    return {"message": f"Event {event_id} updated", "id": event.id}
+    return {"message": f"Event {event_id} updated", "id": event.id,
+            "time": event.time, "position": event.position}
 
 
 @app.post("/records", response_model=dict, summary="Add record manually")
@@ -1504,7 +1432,9 @@ def update_record(
             raise HTTPException(status_code=404, detail="Pupil not found")
         record.pupil_id = pupil_id
     db.commit()
-    return {"message": f"Record {record_id} updated", "id": record.id}
+    return {"message": f"Record {record_id} updated", "id": record.id,
+            "time": record.time, "discipline_id": record.discipline_id,
+            "pupil_id": record.pupil_id}
 
 
 @app.delete("/records/{record_id}", response_model=dict, summary="Delete record")
@@ -1531,6 +1461,25 @@ def save_smtp_settings(
     app_config.smtp_port = port
     app_config.set_smtp_credentials(user.strip(), password)
     return {"message": "Nastavitve e-pošte so shranjene."}
+
+
+@app.get("/start-lists/{start_list_id}/pdf")
+def start_list_pdf(start_list_id: int, db=Depends(get_db)):
+    """Pravi PDF s štartno listo."""
+    from app.utils import start_list_pdf_bytes
+    from starlette.responses import Response
+
+    start_list = db.query(StartList).get(start_list_id)
+    if not start_list:
+        raise HTTPException(status_code=404, detail="Start list not found")
+    discipline_name = start_list.discipline.name if start_list.discipline else "—"
+    pdf = start_list_pdf_bytes(start_list, start_list.pupils, discipline_name, start_list.grade)
+    filename = f"startna_lista_{start_list_id}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @app.delete("/start-lists/{start_list_id}", response_model=dict, summary="Delete start list")
@@ -1586,9 +1535,11 @@ def health():
     """Health check endpoint."""
     try:
         # Check database connectivity
-        session = get_db()
-        # Simple query
-        schools = session.query(School).first()
+        session = get_session()
+        try:
+            schools = session.query(School).first()
+        finally:
+            session.close()
         return {"status": "healthy", "message": "Database connected"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
