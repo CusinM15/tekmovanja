@@ -369,20 +369,7 @@ def remove_discipline(
 def list_pupils(db=Depends(get_db)):
     """List all pupils."""
     pupils = db.query(Pupil).all()
-    return [
-        {
-            "id": p.id,
-            "first_name": p.first_name,
-            "last_name": p.last_name,
-            "school_id": p.school_id,
-            "school_name": p.school.name if p.school else None,
-            "grade": p.grade,
-            "gender": p.gender,
-            "created_at": p.created_at.isoformat(),
-            "updated_at": p.updated_at.isoformat(),
-        }
-        for p in pupils
-    ]
+    return [p.to_dict() for p in pupils]
 
 @app.post("/pupils", response_model=dict, summary="Add pupil")
 def add_pupil(
@@ -510,21 +497,7 @@ def record_event(
 def list_events(db=Depends(get_db)):
     """List all events."""
     events = db.query(CompetitionEvent).all()
-    return [
-        {
-            "id": e.id,
-            "pupil_id": e.pupil_id,
-            "pupil_name": (e.pupil.first_name + " " + e.pupil.last_name) if e.pupil else None,
-            "discipline_id": e.discipline_id,
-            "discipline_name": e.discipline.name if e.discipline else None,
-            "time": e.time,
-            "position": e.position,
-            "notes": e.notes,
-            "created_at": e.created_at.isoformat(),
-            "updated_at": e.updated_at.isoformat(),
-        }
-        for e in events
-    ]
+    return [e.to_dict() for e in events]
 
 # === RECORD MANAGEMENT ===
 
