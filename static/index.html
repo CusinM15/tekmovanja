@@ -158,9 +158,18 @@
     <div id="dejavnost-podrobno" style="display:none;margin-top:18px;border-top:2px solid #d5dde0;padding-top:14px;">
       <h3 id="dejavnost-naslov" style="margin-bottom:6px"></h3>
       <div class="vrstica-gumbov">
+        <button class="gumb gumb-zelen" onclick="odpriVnosRezultatov()">＋ Vnesi / uredi rezultate</button>
         <button class="gumb gumb-moder" onclick="natovoriDejavnost()">🔄 Osveži</button>
         <a class="gumb gumb-orange" href="#" id="dejavnost-pdf" target="_blank">📄 Štartna lista PDF</a>
         <button class="gumb gumb-siv" onclick="zapriDejavnost()">✕ Zapri pogled</button>
+      </div>
+      <div id="vnos-rezultatov" style="display:none;margin-top:12px;background:#f4f7f9;border:1px solid #d5dde0;border-radius:8px;padding:12px;">
+        <h4 style="margin:0 0 8px">Hitro vnašanje rezultatov</h4>
+        <div id="vnos-rezultatov-vrstice"></div>
+        <div class="vrstica-gumbov" style="margin-top:10px">
+          <button class="gumb gumb-zelen" onclick="shraniVnosRezultatov()">💾 Shrani vse rezultate</button>
+          <button class="gumb gumb-siv" onclick="zapriVnosRezultatov()">Prekliči</button>
+        </div>
       </div>
       <h4 style="margin:14px 0 4px">Učenci na štartni listi (15)</h4>
       <table>
@@ -560,17 +569,13 @@ function zapriDejavnost(){
 function natovoriDejavnost(){
   if (!TRENUTNA_DEJAVNOST) return;
   var id = TRENUTNA_DEJAVNOST;
-  // Rezultati te discipline, združeni z učenci iz štartne liste (ali vsi enakega spola)
+  var disc = null;
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === id) disc = VSE_DISCIPLINE[i];
+  // Rezultati te discipline, združeni z učenci iz štartne liste
   Promise.all([api('/events'), api('/start-lists'), api('/pupils')]).then(function(rez){
     var dogodki = rez[0].filter(function(e){ return e.discipline_id === id; });
     var liste = rez[1].filter(function(l){ return l.discipline_id === id; });
     var ucenci = rez[2];
-    // Vrstni red: prvo učenci iz štartne liste te discipline, potem ostali
-    var vrstni_red = [];
-    var vidni = {};
-    liste.forEach(function(l){
-      (l.pupil_names || []).forEach(function(nm){ vrstni_red.push(nm); });
-    });
     // Preslikaj dogodek → čas za učenca
     var cas = {};
     var mesto = {};
@@ -582,23 +587,102 @@ function natovoriDejavnost(){
     var st = 0;
     ucenci.forEach(function(u){
       var nm = u.first_name + ' ' + u.last_name;
-      // vključi če je v štartni listi ali ima rezultat
+      // vključi če je v štartni listi te discipline ali že ima rezultat
       var jeNaListi = liste.some(function(l){ return (l.pupil_names || []).indexOf(nm) !== -1; });
-      if (!jeNaListi && cas[u.id] === undefined) return;
-      st++;
-      vrstice += '<tr>' +
-        '<td>' + st + '</td>' +
-        '<td>' + (u.gender === 'M' ? '♂ ' : '♀ ') + esc(nm) + '</td>' +
-        '<td>' + esc(u.grade) + '</td>' +
-        '<td>' + esc(u.school_name || '') + '</td>' +
-        '<td>' + (cas[u.id] !== undefined ? casLepo(cas[u.id]) : '—') + '</td>' +
-        '<td>' + (mesto[u.id] !== undefined ? mesto[u.id] + '.' : '—') + '</td>' +
-        '</tr>';
+      var jeFant = (disc && disc.name.indexOf('♀') === -1);
+      if (jeNaListi || (jeFant && u.gender === 'M' && cas[u.id] !== undefined) ||
+          (!jeFant && u.gender === 'Ž' && cas[u.id] !== undefined)){
+        st++;
+        vrstice += '<tr>' +
+          '<td>' + st + '</td>' +
+          '<td>' + (u.gender === 'M' ? '♂ ' : '♀ ') + esc(nm) + '</td>' +
+          '<td>' + esc(u.grade) + '</td>' +
+          '<td>' + esc(u.school_name || '') + '</td>' +
+          '<td>' + (cas[u.id] !== undefined ? casLepo(cas[u.id]) : '—') + '</td>' +
+          '<td>' + (mesto[u.id] !== undefined ? mesto[u.id] + '.' : '—') + '</td>' +
+          '</tr>';
+      }
     });
     $('tabela-dejavnost').innerHTML = vrstice;
     $('prazno-dejavnost').style.display = st ? 'none' : 'block';
-    if (!dogodki.length) toast('Za to disciplino še ni rezultatov prikazanih v pregledu.', '');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriVnosRezultatov(){
+  if (!TRENUTNA_DEJAVNOST) return;
+  var id = TRENUTNA_DEJAVNOST;
+  Promise.all([api('/events'), api('/start-lists'), api('/pupils')]).then(function(rez){
+    var dogodki = rez[0].filter(function(e){ return e.discipline_id === id; });
+    var liste = rez[1].filter(function(l){ return l.discipline_id === id; });
+    var ucenci = rez[2];
+    var cas = {};
+    var ev_id = {};
+    dogodki.forEach(function(e){ cas[e.pupil_id] = e.time; ev_id[e.pupil_id] = e.id; });
+    var vrstice = '';
+    ucenci.forEach(function(u){
+      var nm = u.first_name + ' ' + u.last_name;
+      // štartna lista te discipline: s priimki sopomenke
+      var jeNaListi = liste.some(function(l){
+        return (l.pupil_names || []).indexOf(nm) !== -1 ||
+               (l.pupils || []).some(function(pp){ return pp.id === u.id; });
+      });
+      if (!jeNaListi && cas[u.id] === undefined) return;
+      var vred = cas[u.id] !== undefined ? String(cas[u.id]).replace('.', ',') : '';
+      vrstice += '<div style="display:flex;gap:10px;align-items:center;padding:4px 0;border-bottom:1px solid #eef">' +
+        '<span style="width:220px"><strong>' + (u.gender === 'M' ? '♂ ' : '♀ ') + esc(nm) + '</strong> <small>' + esc(u.grade) + '</small></span>' +
+        '<span style="flex:1"><input id="vr-' + u.id + '" placeholder="čas (npr. 12,5)" value="' + esc(vred) + '" style="width:150px">' +
+        (cas[u.id] !== undefined ? ' <small>(urejanje ' + ev_id[u.id] + ')</small>' : '') + '</span>' +
+        '</div>';
+    });
+    if (!vrstice) vrstice = '<div class="prazno">Ni učencev na štartni listi te discipline.</div>';
+    $('vnos-rezultatov-vrstice').innerHTML = vrstice;
+    $('vnos-rezultatov').style.display = 'block';
+    document.getElementById('vnos-rezultatov').scrollIntoView({behavior:'smooth', block:'start'});
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function shraniVnosRezultatov(){
+  if (!TRENUTNA_DEJAVNOST) return;
+  var id = TRENUTNA_DEJAVNOST;
+  var polja = document.querySelectorAll('#vnos-rezultatov-vrstice input[id^="vr-"]');
+  var vnesene = [];
+  var napake = [];
+  polja.forEach(function(inp){
+    var pid = parseInt(inp.id.replace('vr-', ''), 10);
+    var v = inp.value.trim().replace(',', '.');
+    if (v === '') return;   // prazno = preskoči
+    var cas = parseFloat(v);
+    if (isNaN(cas) || cas <= 0){ napake.push('Učenec ' + pid + ': napačen čas »' + inp.value + '«'); return; }
+    vnesene.push({ pupil_id: pid, time: cas });
+  });
+  if (napake.length){ toast('Popravi: ' + napake.join('; '), 'napaka'); return; }
+  if (!vnesene.length){ toast('Ni vnesenih rezultatov.', 'napaka'); return; }
+  // Zaporedno shrani vsak; položaj se izračuna samodejno (po času, sokm).
+  var vrsta = vnesene.slice().sort(function(a,b){ return a.time - b.time; });
+  function shraniEnega(i){
+    if (i >= vrsta.length){
+      toast('Rezultati shranjeni.', '');
+      zapriVnosRezultatov();
+      natovoriDejavnost();
+      return;
+    }
+    var v = vrsta[i];
+    var position = i + 1;
+    // preveri če že obstaja dogodek za to disciplino+učenca
+    api('/events').then(function(dog){
+      var obst = dog.filter(function(e){ return e.discipline_id === id && e.pupil_id === v.pupil_id; })[0];
+      var req = obst
+        ? api('/events/' + obst.id, 'PUT', { time: v.time, position: position })
+        : api('/events', 'POST', { pupil_id: v.pupil_id, discipline_id: id, time: v.time, position: position });
+      return req.then(function(){ shraniEnega(i+1); });
+    }).catch(function(e){ toast('Napaka pri shranjevanju: ' + e.message, 'napaka'); });
+  }
+  shraniEnega(0);
+}
+
+function zapriVnosRezultatov(){
+  $('vnos-rezultatov').style.display = 'none';
+  $('vnos-rezultatov-vrstice').innerHTML = '';
 }
 
 function odpriModalDisciplina(id){

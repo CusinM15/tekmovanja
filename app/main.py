@@ -94,27 +94,36 @@ def _seed_defaults():
             sole = {s.name: s.id for s in db.query(School).all()}
             disc = {d.name: d.id for d in db.query(Discipline).all()}
 
-            # 30 učencev: 15 fantov (M) + 15 deklet (Ž), porazdeljenih po šolah
-            # in razredih — dovolj, da ima vsaka disciplina svojih 15 nastopov.
-            imena_m = ["Luka", "Jan", "Tim", "Žan", "Gal", "Miha", "Jakob", "Blaž",
-                       "Nejc", "Tilen", "Rok", "Matej", "David", "Filip", "Žiga"]
-            imena_z = ["Ana", "Maja", "Eva", "Nina", "Pia", "Lara", "Zala", "Nika",
-                       "Tjaša", "Klara", "Sara", "Ema", "Mia", "Lana", "Hana"]
-            priimki_m = ["Zupan", "Horvat", "Rozman", "Jerina", "Mežnar", "Krajnc",
-                         "Novak", "Vidmar", "Kovač", "Zajc", "Peršič", "Mlakar",
-                         "Šubic", "Golob", "Eržen"]
-            priimki_z = ["Novak", "Kovač", "Peršič", "Mlakar", "Šubic", "Zupan",
-                         "Horvat", "Krajnc", "Vidmar", "Zajc", "Rozman", "Jerina",
-                         "Golob", "Eržen", "Klemenčič"]
+            # 120 učencev: 60 fantov (M) + 60 deklet (Ž) — dovolj, da ima VSAKA
+            # disciplina SVOJIH 15 učencev (ne istih 15 za vse discipline).
+            base_imena_m = ["Luka", "Jan", "Tim", "Žan", "Gal", "Miha", "Jakob", "Blaž",
+                            "Nejc", "Tilen", "Rok", "Matej", "David", "Filip", "Žiga",
+                            "Anže", "Jure", "Nik", "Lovro", "Aljaž", "Tadej", "Urban",
+                            "Vid", "Lan", "Oskar", "Maj", "Aleks", "Domen", "Boris", "Enej"]
+            base_imena_z = ["Ana", "Maja", "Eva", "Nina", "Pia", "Lara", "Zala", "Nika",
+                            "Tjaša", "Klara", "Sara", "Ema", "Mia", "Lana", "Hana",
+                            "Lucija", "Teja", "Brina", "Neža", "Zoja", "Iza", "Alja",
+                            "Ana Marija", "Eva Marija", "Kaja", "Lina", "Maruša", "Ula", "Vita", "Nela"]
+            # Ponovi imena za 2. krog (novi priimki → navidez novi učenci)
+            imena_m = (base_imena_m * 2)[:60]
+            imena_z = (base_imena_z * 2)[:60]
+            priimki = ["Zupan", "Horvat", "Rozman", "Jerina", "Mežnar", "Krajnc",
+                       "Novak", "Vidmar", "Kovač", "Zajc", "Peršič", "Mlakar",
+                       "Šubic", "Golob", "Eržen", "Klemenčič", "Košir", "Rupnik",
+                       "Železnik", "Ceglar", "Orožen", "Bogataj", "Kalan", "Štrukelj",
+                       "Lah", "Pogačnik", "Vovk", "Dežman", "Juvan", "Turk",
+                       "Hribernik", "Resman", "Dolenc", "Pečnik", "Zemljič", "Kosec"]
+            # 60 priimkov: 36 vit + ponovi zaostanek
+            priimki = (priimki * 2)[:60]
             shole_lista = list(sole.values())
-            ucenci = []
 
-            def _dodaj_ucence(imena, priimki, spol, start_id):
+            def _dodaj_ucence(imena, spol, start_index):
                 out = []
-                for i in range(15):
+                for i in range(60):
+                    prk = priimki[(start_index + i) % len(priimki)]
                     u = Pupil(
                         first_name=imena[i],
-                        last_name=priimki[i],
+                        last_name=prk + (" II" if i >= 30 else ""),
                         school_id=shole_lista[i % len(shole_lista)],
                         grade=("2.r" if i % 2 == 0 else "3.r"),
                         gender=spol,
@@ -123,52 +132,71 @@ def _seed_defaults():
                     out.append(u)
                 return out
 
-            ucenci_m = _dodaj_ucence(imena_m, priimki_m, "M", 0)
-            ucenci_z = _dodaj_ucence(imena_z, priimki_z, "Ž", 0)
+            ucenci_m = _dodaj_ucence(imena_m, "M", 0)
+            ucenci_z = _dodaj_ucence(imena_z, "Ž", 0)
             db.commit()
-            ucenci = ucenci_m + ucenci_z
 
-            # Za VSAKO disciplino: 15 učencev primernega spola dobi rezultat
-            # (CompetitionEvent) — imena disciplin so "tek 60m ♂", "tek 60m ♀", …
+            # Za VSAKO disciplino: 15 SVOJIH učencev (različen pas) dobi rezultat
             import random
             rnd = random.Random(42)
             from datetime import datetime as _dt
 
-            for disc_ime, disc_id in disc.items():
-                je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
-                pool = ucenci_m if je_fant else ucenci_z
-                for mesto, u in enumerate(pool, start=1):
+            moske = [(k, v) for k, v in disc.items() if ("♂" in k) or k.rstrip().endswith("M")]
+            zenske = [(k, v) for k, v in disc.items() if not (("♂" in k) or k.rstrip().endswith("M"))]
+            # po 4 discipline; vsaka dobi 60/4=15 učencev iz svojega spolskega bazena
+            for idx, (disc_ime, disc_id) in enumerate(moske):
+                pas = ucenci_m[idx * 15: idx * 15 + 15]
+                for mesto, u in enumerate(pas, start=1):
                     if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
-                        cas = round(rnd.uniform(2.5, 5.5), 2)   # skok/met: metri/dolžina
+                        cas = round(rnd.uniform(2.5, 5.5), 2)
                     else:
-                        cas = round(rnd.uniform(9.0, 16.0), 2)   # teki: sekunde
+                        cas = round(rnd.uniform(9.0, 16.0), 2)
+                    db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc_id,
+                                            time=cas, position=mesto))
+            for idx, (disc_ime, disc_id) in enumerate(zenske):
+                pas = ucenci_z[idx * 15: idx * 15 + 15]
+                for mesto, u in enumerate(pas, start=1):
+                    if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
+                        cas = round(rnd.uniform(2.5, 5.5), 2)
+                    else:
+                        cas = round(rnd.uniform(9.0, 16.0), 2)
                     db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc_id,
                                             time=cas, position=mesto))
             db.commit()
 
-            # Rekordi: najboljši čas vsake discipline (najmanjši = zmagovalec)
+            # Rekordi: za VSAKO disciplino in VSAK razred posebej (2.r, 3.r)
             for disc_ime, disc_id in disc.items():
                 je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
                 pool = ucenci_m if je_fant else ucenci_z
-                best = min(
-                    db.query(CompetitionEvent).filter(CompetitionEvent.discipline_id == disc_id).all(),
-                    key=lambda e: e.time,
-                )
-                db.add(Record(discipline_id=disc_id, pupil_id=best.pupil_id,
-                              time=best.time, date_recorded=_dt(2026, 5, 18),
-                              notes="Rekord tekmovanja"))
+                for razred in ("2.r", "3.r"):
+                    evts = db.query(CompetitionEvent).filter(
+                        CompetitionEvent.discipline_id == disc_id
+                    ).all()
+                    best = None
+                    for e in evts:
+                        pp = db.query(Pupil).get(e.pupil_id)
+                        if pp and pp.grade == razred:
+                            if best is None or e.time < best.time:
+                                best = e
+                    if best:
+                        db.add(Record(discipline_id=disc_id, pupil_id=best.pupil_id,
+                                      time=best.time, date_recorded=_dt(2026, 5, 18),
+                                      notes=f"Rekord tekmovanja ({razred})"))
             db.commit()
 
-            # Štartne liste: ena na disciplino — 15 učencev primernega spola
-            for disc_ime, disc_id in disc.items():
-                je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
-                pool = ucenci_m if je_fant else ucenci_z
-                sl = StartList(discipline_id=disc_id,
-                               grade="2.r",
+            # Štartne liste: ena na disciplino — SVOJIH 15 učencev (isti pas kot rezultati)
+            for idx, (disc_ime, disc_id) in enumerate(moske):
+                sl = StartList(discipline_id=disc_id, grade="2.r",
                                event_date=_dt(2026, 11, 28, 8, 0))
-                sl.pupils = pool
+                sl.pupils = ucenci_m[idx * 15: idx * 15 + 15]
+                db.add(sl)
+            for idx, (disc_ime, disc_id) in enumerate(zenske):
+                sl = StartList(discipline_id=disc_id, grade="2.r",
+                               event_date=_dt(2026, 11, 28, 8, 0))
+                sl.pupils = ucenci_z[idx * 15: idx * 15 + 15]
                 db.add(sl)
             db.commit()
+
     except Exception as e:
         db.rollback()
         print(f"Seed opozorilo (ni usodno): {e}")
