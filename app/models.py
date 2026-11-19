@@ -190,6 +190,7 @@ class CompetitionEvent(Base):
             "pupil_id": self.pupil_id,
             "pupil_name": f"{self.pupil.first_name} {self.pupil.last_name}" if self.pupil else None,
             "pupil_grade": self.pupil.grade if self.pupil else None,
+            "pupil_gender": self.pupil.gender if self.pupil else None,
             "school_name": self.pupil.school.name if self.pupil and self.pupil.school else None,
             "discipline_id": self.discipline_id,
             "discipline_name": self.discipline.name if self.discipline else None,
