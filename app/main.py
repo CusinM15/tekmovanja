@@ -149,29 +149,9 @@ def list_schools(db=Depends(get_db), include_inactive=False):
     """List all schools. If include_inactive=True, include inactive schools too."""
     schools = db.query(School).all()
     if include_inactive:
-        return [
-            {
-                "id": s.id,
-                "name": s.name,
-                "email": s.email,
-                "status": s.status,
-                "created_at": s.created_at.isoformat(),
-                "updated_at": s.updated_at.isoformat(),
-            }
-            for s in schools
-        ]
+        return [s.to_dict() for s in schools]
     # Default: only active schools
-    return [
-        {
-            "id": s.id,
-            "name": s.name,
-            "email": s.email,
-            "status": s.status,
-            "created_at": s.created_at.isoformat(),
-            "updated_at": s.updated_at.isoformat(),
-        }
-        for s in schools if s.status == SchoolStatus.ACTIVE.value
-    ]
+    return [s.to_dict() for s in schools if s.status == SchoolStatus.ACTIVE.value]
 
 @app.post("/schools", response_model=dict, summary="Add school")
 def add_school(
@@ -278,17 +258,7 @@ def reactivate_all_inactive(
 def list_disciplines(db=Depends(get_db)):
     """List all disciplines."""
     disciplines = db.query(Discipline).all()
-    return [
-        {
-            "id": d.id,
-            "name": d.name,
-            "gender": d.gender,
-            "applicable_grades": d.applicable_grades,
-            "created_at": d.created_at.isoformat(),
-            "updated_at": d.updated_at.isoformat(),
-        }
-        for d in disciplines
-    ]
+    return [d.to_dict() for d in disciplines]
 
 @app.post("/disciplines", response_model=dict, summary="Add discipline")
 def add_discipline(
@@ -698,21 +668,7 @@ def create_records(
 def list_records(db=Depends(get_db)):
     """List all records."""
     records = db.query(Record).all()
-    return [
-        {
-            "id": r.id,
-            "discipline_id": r.discipline_id,
-            "discipline_name": r.discipline.name if r.discipline else None,
-            "pupil_id": r.pupil_id,
-            "pupil_name": (r.pupil.first_name + " " + r.pupil.last_name) if r.pupil else None,
-            "pupil_grade": r.pupil.grade if r.pupil else None,
-            "time": r.time,
-            "date_recorded": r.date_recorded.isoformat() if r.date_recorded else None,
-            "notes": r.notes,
-            "created_at": r.created_at.isoformat(),
-        }
-        for r in records
-    ]
+    return [r.to_dict() for r in records]
 
 # === START LIST MANAGEMENT ===
 
@@ -768,19 +724,7 @@ def create_start_list(
 def list_start_lists(db=Depends(get_db)):
     """List all start lists."""
     lists = db.query(StartList).all()
-    return [
-        {
-            "id": l.id,
-            "discipline_id": l.discipline_id,
-            "discipline_name": l.discipline.name if l.discipline else None,
-            "grade": l.grade,
-            "event_date": l.event_date.isoformat(),
-            "created_at": l.created_at.isoformat(),
-            "pupil_count": len(l.pupils),
-            "pupil_names": [f"{p.first_name} {p.last_name}" for p in l.pupils],
-        }
-        for l in lists
-    ]
+    return [l.to_dict() for l in lists]
 
 # === SCHOOL INVITATIONS ===
 

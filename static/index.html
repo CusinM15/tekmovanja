@@ -441,26 +441,33 @@ function prikaziUcence(){
 function odpriModalUcenec(id){
   var jeUrejanje = !!id;
   var ucenec = null;
-  for (var i = 0; i < VSI_UCENCI.length; i++) if (VSI_UCENCI[i].id === id) ucenec = VSI_UCENCI[i];
-  var opcijeSole = VSE_SOLE.map(function(s){ return '<option value="' + s.id + '"' + (ucenec && ucenec.school_id === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('');
-  $('modal-vsebina').innerHTML =
-    '<h3>' + (jeUrejanje ? '✏️ Uredi učenca' : '＋ Dodaj učenca') + '</h3>' +
-    '<div class="polje"><label>Ime</label><input id="f-u-ime" value="' + esc(ucenec ? ucenec.first_name : '') + '"></div>' +
-    '<div class="polje"><label>Priimek</label><input id="f-u-priimek" value="' + esc(ucenec ? ucenec.last_name : '') + '"></div>' +
-    '<div class="polje"><label>Šola</label><select id="f-u-sola">' + opcijeSole + '</select></div>' +
-    '<div class="polje"><label>Razred</label><select id="f-u-razred">' +
-      '<option value="2.r"' + (ucenec && ucenec.grade === '2.r' ? ' selected' : '') + '>2. razred</option>' +
-      '<option value="3.r"' + (ucenec && ucenec.grade === '3.r' ? ' selected' : '') + '>3. razred</option>' +
-    '</select></div>' +
-    '<div class="polje"><label>Spol</label><select id="f-u-spol">' +
-      '<option value="M"' + (ucenec && ucenec.gender === 'M' ? ' selected' : '') + '>♂ Fant</option>' +
-      '<option value="Ž"' + (ucenec && ucenec.gender === 'Ž' ? ' selected' : '') + '>♀ Punca</option>' +
-    '</select></div>' +
-    '<div class="modal-gumbi">' +
-      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-      '<button class="gumb gumb-zelen" onclick="shraniUcenca(' + (id || 'null') + ')">Shrani</button>' +
-    '</div>';
-  odpriModal();
+  var promise = Promise.all([api('/pupils'), api('/schools?include_inactive=True')]).then(function(rez){
+    if (jeUrejanje){
+      for (var i = 0; i < rez[0].length; i++) if (rez[0][i].id === id) ucenec = rez[0][i];
+    }
+    return rez[1];
+  });
+  promise.then(function(sole){
+    var opcijeSole = sole.map(function(s){ return '<option value="' + s.id + '"' + (ucenec && ucenec.school_id === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('');
+    $('modal-vsebina').innerHTML =
+      '<h3>' + (jeUrejanje ? '✏️ Uredi učenca' : '＋ Dodaj učenca') + '</h3>' +
+      '<div class="polje"><label>Ime</label><input id="f-u-ime" value="' + esc(ucenec ? ucenec.first_name : '') + '"></div>' +
+      '<div class="polje"><label>Priimek</label><input id="f-u-priimek" value="' + esc(ucenec ? ucenec.last_name : '') + '"></div>' +
+      '<div class="polje"><label>Šola</label><select id="f-u-sola">' + opcijeSole + '</select></div>' +
+      '<div class="polje"><label>Razred</label><select id="f-u-razred">' +
+        '<option value="2.r"' + (ucenec && ucenec.grade === '2.r' ? ' selected' : '') + '>2. razred</option>' +
+        '<option value="3.r"' + (ucenec && ucenec.grade === '3.r' ? ' selected' : '') + '>3. razred</option>' +
+      '</select></div>' +
+      '<div class="polje"><label>Spol</label><select id="f-u-spol">' +
+        '<option value="M"' + (ucenec && ucenec.gender === 'M' ? ' selected' : '') + '>♂ Fant</option>' +
+        '<option value="Ž"' + (ucenec && ucenec.gender === 'Ž' ? ' selected' : '') + '>♀ Punca</option>' +
+      '</select></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniUcenca(' + (id || 'null') + ')">Shrani</button>' +
+      '</div>';
+    odpriModal();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
 function shraniUcenca(id){
@@ -516,20 +523,28 @@ function natovoriDiscipline(){
 function odpriModalDisciplina(id){
   var jeUrejanje = !!id;
   var disc = null;
-  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === id) disc = VSE_DISCIPLINE[i];
-  $('modal-vsebina').innerHTML =
-    '<h3>' + (jeUrejanje ? '✏️ Uredi disciplino' : '＋ Dodaj disciplino') + '</h3>' +
-    '<div class="polje"><label>Naziv discipline</label><input id="f-d-ime" value="' + esc(disc ? disc.name : '') + '" placeholder="npr. tek 60m M"></div>' +
-    '<div class="polje"><label>Spol</label><select id="f-d-spol">' +
-      '<option value="M"' + (disc && (disc.gender === 'M') ? ' selected' : '') + '>♂ Moški</option>' +
-      '<option value="Ž"' + (disc && (disc.gender === 'Ž' || disc.gender === 'ž') ? ' selected' : '') + '>♀ Ženske</option>' +
-    '</select></div>' +
-    '<div class="polje"><label>Razredi (ločeno z vejico)</label><input id="f-d-razredi" value="' + esc(disc ? disc.applicable_grades : '2.r,3.r') + '"></div>' +
-    '<div class="modal-gumbi">' +
-      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-      '<button class="gumb gumb-zelen" onclick="shraniDisciplino(' + (id || 'null') + ')">Shrani</button>' +
-    '</div>';
-  odpriModal();
+  var promise = Promise.resolve(null);
+  if (jeUrejanje){
+    promise = api('/disciplines').then(function(lista){
+      for (var i = 0; i < lista.length; i++) if (lista[i].id === id) disc = lista[i];
+      return disc;
+    });
+  }
+  promise.then(function(){
+    $('modal-vsebina').innerHTML =
+      '<h3>' + (jeUrejanje ? '✏️ Uredi disciplino' : '＋ Dodaj disciplino') + '</h3>' +
+      '<div class="polje"><label>Naziv discipline</label><input id="f-d-ime" value="' + esc(disc ? disc.name : '') + '" placeholder="npr. tek 60m M"></div>' +
+      '<div class="polje"><label>Spol</label><select id="f-d-spol">' +
+        '<option value="M"' + (disc && (disc.gender === 'M') ? ' selected' : '') + '>♂ Moški</option>' +
+        '<option value="Ž"' + (disc && (disc.gender === 'Ž' || disc.gender === 'ž') ? ' selected' : '') + '>♀ Ženske</option>' +
+      '</select></div>' +
+      '<div class="polje"><label>Razredi (ločeno z vejico)</label><input id="f-d-razredi" value="' + esc(disc ? disc.applicable_grades : '2.r,3.r') + '"></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniDisciplino(' + (id || 'null') + ')">Shrani</button>' +
+      '</div>';
+    odpriModal();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
 function shraniDisciplino(id){

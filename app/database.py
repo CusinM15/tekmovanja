@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from app.models import Base
@@ -32,15 +32,17 @@ def get_engine():
         # ":memory:" iz configa, da se podatki ne izgubijo ob osvežitvi/zaprtju.
         project_dir = Path(__file__).resolve().parent.parent
         path = str(project_dir / "tekmovanja.db")
-        # StaticPool + check_same_thread=False: ena deljena povezava skozi cel
-        # proces. SQLite to obožuje — ni QueuePool limita (5), ki ga je prej
-        # izčrpalo po nekaj requestih in app je zmrznil.
+        # SQLite + NullPool: vsak request dobi svežo povezavo, ki se po uporabi
+        # dobesedno ZAPRE (ne vrača v deljen pool). Na več threadih to nikoli
+        # ne zamrzne — QueuePool (5+10) se je prej izčrpal po ~15 requestih in
+        # server je tiho ZMRZNIL (zato so uporabniku "gumbi ne delali").
+        # NullPool = ni deljene povezave = ni deadlocka / ni izčrpanja limita.
         _engine = create_engine(
             f"sqlite:///{path}",
             echo=False,
             future=True,
+            poolclass=NullPool,
             connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
         )
     return _engine
 
