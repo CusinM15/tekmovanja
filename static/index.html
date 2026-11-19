@@ -39,6 +39,8 @@
   table{width:100%;border-collapse:collapse;margin-top:8px;font-size:15px;}
   th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #e3e8ea;}
   th{background:var(--siva-svetla);color:var(--siva);font-size:13px;text-transform:uppercase;letter-spacing:.4px;}
+  table.sortable th{cursor:pointer;user-select:none;white-space:nowrap;}
+  table.sortable th:hover{background:var(--siva);color:#fff;}
   tr:hover td{background:#f8fafb;}
   .kartice{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;}
   .kartica{background:var(--modra-svetla);border-radius:12px;padding:18px;text-align:center;}
@@ -118,7 +120,7 @@
       <button class="gumb gumb-zelen" onclick="odpriModalSola()">＋ Dodaj šolo</button>
       <button class="gumb gumb-siv" onclick="aktivirajVseSole()">↩️ Vrni vse šole v aktivni seznam</button>
     </div>
-    <table>
+    <table class="sortable">
       <thead><tr><th>Šola</th><th>E-pošta</th><th>Status</th><th></th></tr></thead>
       <tbody id="tabela-sole"></tbody>
     </table>
@@ -134,7 +136,7 @@
       <button class="gumb gumb-moder" onclick="odpriModalUvozCsv()">📄 Uvozi učence iz CSV</button>
     </div>
     <div class="vnos-iskanja"><input id="iskanje-ucenci" placeholder="Išči po imenu ali šoli..." oninput="prikaziUcence()"></div>
-    <table>
+    <table class="sortable">
       <thead><tr><th>Ime in priimek</th><th>Šola</th><th>Razred</th><th>Spol</th><th></th></tr></thead>
       <tbody id="tabela-ucenci"></tbody>
     </table>
@@ -148,7 +150,7 @@
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalDisciplina()">＋ Dodaj disciplino</button>
     </div>
-    <table>
+    <table class="sortable">
       <thead><tr><th>Disciplina</th><th>Razredi</th><th>Nastopi</th><th></th></tr></thead>
       <tbody id="tabela-discipline"></tbody>
     </table>
@@ -172,7 +174,7 @@
         </div>
       </div>
       <h4 style="margin:14px 0 4px">Učenci na štartni listi (15)</h4>
-      <table>
+      <table class="sortable">
         <thead><tr><th>#</th><th>Učenec</th><th>Razred</th><th>Šola</th><th>Rezultat</th><th>Mesto</th></tr></thead>
         <tbody id="tabela-dejavnost"></tbody>
       </table>
@@ -182,17 +184,31 @@
 
   <!-- ============ REZULTATI ============ -->
   <section class="stran" id="stran-rezultati">
-    <h2>Rezultati tekmovanja</h2>
-    <p class="opis">Vnesite rezultate učencev po posameznih disciplinah.</p>
-    <div class="vrstica-gumbov">
-      <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
-      <a class="gumb gumb-orange" href="/results-pdf" target="_blank">📄 Izvozi PDF</a>
+    <div id="rz-pregled">
+      <h2>Rezultati tekmovanja</h2>
+      <p class="opis">Izberite disciplino za vpogled rezultatov po razredih in spolu.</p>
+      <div class="vrstica-gumbov">
+        <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
+        <a class="gumb gumb-orange" href="/results-pdf" target="_blank">📄 Izvozi PDF (vse)</a>
+      </div>
+      <div class="kartice" id="rz-kartice"></div>
+      <div class="prazno" id="prazno-rezultati" style="display:none">Ni še rezultatov. Najprej jih vnesite v disciplinah.</div>
     </div>
-    <table>
-      <thead><tr><th>Učenec</th><th>Disciplina</th><th>Čas / dolžina</th><th>Mesto</th><th>Opombe</th><th></th></tr></thead>
-      <tbody id="tabela-rezultati"></tbody>
-    </table>
-    <div class="prazno" id="prazno-rezultati" style="display:none">Ni še vnesenih rezultatov.</div>
+
+    <div id="rz-detail" style="display:none">
+      <h2>Rezultati — <span id="rz-detail-naslov"></span></h2>
+      <div class="polje" style="max-width:420px;margin:10px 0">
+        <label>Preklopi disciplino</label>
+        <select id="rz-detail-izbira" onchange="preklopiRezultatDisciplino(this.value)"></select>
+      </div>
+      <div class="vrstica-gumbov">
+        <button class="gumb gumb-siv" onclick="nazajRezultati()">← Nazaj na discipline</button>
+        <a class="gumb gumb-orange" href="#" target="_blank" id="rz-detail-pdf">📄 PDF discipline</a>
+        <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
+        <button class="gumb gumb-moder" onclick="natovoriRezultate()">🔄 Osveži</button>
+      </div>
+      <div id="rz-skupine"></div>
+    </div>
   </section>
 
   <!-- ============ REKORDI ============ -->
@@ -204,7 +220,7 @@
       <button class="gumb gumb-moder" onclick="natovoriRekorde()">🔄 Osveži</button>
       <button class="gumb gumb-orange" onclick="natovoriBestResults()">🏆 Najboljši po disciplinah</button>
     </div>
-    <table>
+    <table class="sortable">
       <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Čas / dolžina</th><th>Datum</th><th>Opombe</th><th></th></tr></thead>
       <tbody id="tabela-rekordi"></tbody>
     </table>
@@ -212,7 +228,7 @@
 
     <h3 style="margin-top:28px" id="naslov-best">🏆 Najboljši rezultati po disciplinah in razredih</h3>
     <p class="opis">Za vsako disciplino in razred najboljši čas; ob izenačenju so vsi najboljši v isti vrstici.</p>
-    <table id="tabela-best" style="display:none">
+    <table id="tabela-best" class="sortable" style="display:none">
       <thead><tr><th>Disciplina</th><th>Razred</th><th>Čas / dolžina</th><th>Učenci</th></tr></thead>
       <tbody id="tabela-best-body"></tbody>
     </table>
@@ -226,7 +242,7 @@
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalStartna()">＋ Nova štartna lista</button>
     </div>
-    <table>
+    <table class="sortable">
       <thead><tr><th>Disciplina</th><th>Razred</th><th>Datum</th><th></th></tr></thead>
       <tbody id="tabela-startne"></tbody>
     </table>
@@ -744,28 +760,120 @@ function izbrisiDisciplino(id){
 }
 
 /* ================= REZULTATI ================= */
+var REZULTATI_DOGODKI = [];
+var REZULTATI_AKTIVNA = null;   // id discipline, ki je odprta v podpogledu (null = pregled)
+
 function natovoriRezultate(){
-  return api('/events').then(function(dogodki){
-    var vrstice = '';
-    for (var i = 0; i < dogodki.length; i++){
-      var e = dogodki[i];
-      vrstice += '<tr>' +
-        '<td>' + esc(e.pupil_name || '—') + '</td>' +
-        '<td>' + esc(e.discipline_name || '—') + '</td>' +
-        '<td><strong>' + casLepo(e.time) + '</strong></td>' +
-        '<td>' + esc(e.position != null ? e.position + '.' : '—') + '</td>' +
-        '<td>' + esc(e.notes || '') + '</td>' +
-        '<td style="text-align:right;white-space:nowrap">' +
-          '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi</span>' +
-          '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši</span>' +
-        '</td></tr>';
+  return Promise.all([api('/events'), api('/disciplines')]).then(function(rez){
+    REZULTATI_DOGODKI = rez[0];
+    var disc = rez[1];
+    VSE_DISCIPLINE = disc;
+    // Pregled: kartica za vsako disciplino + število rezultatov
+    var kartice = '';
+    for (var i = 0; i < disc.length; i++){
+      var d = disc[i];
+      var st = 0;
+      for (var j = 0; j < REZULTATI_DOGODKI.length; j++) if (REZULTATI_DOGODKI[j].discipline_id === d.id) st++;
+      kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
+        '<div class="stevilo">' + st + '</div>' +
+        '<div class="ime">' + esc(d.name) + '</div></div>';
     }
-    $('tabela-rezultati').innerHTML = vrstice;
-    $('prazno-rezultati').style.display = dogodki.length ? 'none' : 'block';
+    $('rz-kartice').innerHTML = kartice;
+    $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
+    // Če je odprt podpogled discipline, ga po osvežitvi obdrži
+    if (REZULTATI_AKTIVNA) prikaziRezultateDiscipline(REZULTATI_AKTIVNA);
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
-function odpriModalRezultat(id){
+function prikaziRezultateDiscipline(id){
+  REZULTATI_AKTIVNA = id;
+  var dsc = null;
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === id) dsc = VSE_DISCIPLINE[i];
+  if (!dsc) return;
+  // Spustni seznam za neposreden preklop na drugo disciplino (brez vračanja nazaj).
+  var opcije = '';
+  for (var di = 0; di < VSE_DISCIPLINE.length; di++){
+    var dd = VSE_DISCIPLINE[di];
+    opcije += '<option value="' + dd.id + '"' + (dd.id === id ? ' selected' : '') + '>' + esc(dd.name) + '</option>';
+  }
+  $('rz-detail-izbira').innerHTML = opcije;
+  $('rz-detail-naslov').textContent = dsc.name;
+  $('rz-detail-pdf').href = '/results-pdf?discipline_id=' + id;
+  var discSpol = (dsc.gender || '').toUpperCase();
+
+  // V vsaki skupini izpišemo VSE učence ustreznega razreda in spola discipline
+  // (tudi tiste, ki še nimajo rezultata) — tako lahko rezultat dodaš z »＋ Dodaj rezultat«.
+  api('/pupils').then(function(ucenci){
+    // 2 skupini po spolu discipline: 2.r in 3.r
+    var skupine = [
+      ['2.r', 'M', '2. razred — fantje'],
+      ['2.r', 'Ž', '2. razred — dekleta'],
+      ['3.r', 'M', '3. razred — fantje'],
+      ['3.r', 'Ž', '3. razred — dekleta']
+    ];
+    var html = '';
+    for (var g = 0; g < skupine.length; g++){
+      var raz = skupine[g][0], spol = skupine[g][1], naslov = skupine[g][2];
+      // Prikažemo le tisto skupino, ki ustreza spolu discipline.
+      if ((spol || '').toUpperCase() !== discSpol) continue;
+      // Vsi učenci tega razreda in spola, ne glede na to, ali imajo rezultat.
+      var izbrani = [];
+      for (var p = 0; p < ucenci.length; p++){
+        var u = ucenci[p];
+        if ((u.grade || '') !== raz) continue;
+        if ((u.gender || '').toUpperCase() !== discSpol) continue;
+        izbrani.push(u);
+      }
+      var vrstice = '', st = 0;
+      for (var x = 0; x < izbrani.length; x++){
+        var u = izbrani[x];
+        var e = null;
+        for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+          if (REZULTATI_DOGODKI[j].discipline_id === id && REZULTATI_DOGODKI[j].pupil_id === u.id){ e = REZULTATI_DOGODKI[j]; break; }
+        }
+        st++;
+        var akcija = e
+          ? '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi</span>&nbsp;' +
+            '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši</span>'
+          : '<span class="povezava" onclick="odpriModalRezultat(null,' + id + ',' + u.id + ')">＋ Dodaj rezultat</span>';
+        vrstice += '<tr>' +
+          '<td>' + esc(u.first_name + ' ' + u.last_name) + '</td>' +
+          '<td>' + esc(u.school_name || '') + '</td>' +
+          '<td><strong>' + (e ? casLepo(e.time) : '—') + '</strong></td>' +
+          '<td>' + (e && e.position != null ? e.position + '.' : '—') + '</td>' +
+          '<td>' + (e ? esc(e.notes || '') : '—') + '</td>' +
+          '<td style="text-align:right;white-space:nowrap">' + akcija + '</td></tr>';
+      }
+      var spolIkona = (spol === 'M') ? '♂' : '♀';
+      html += '<h3 style="margin:18px 0 4px">' + esc(naslov) + ' ' + spolIkona +
+              ' <small style="font-weight:400;color:#7f8c8d">(' + st + (st === 1 ? ' učenec' : ' učencev') + ')</small></h3>';
+      if (st){
+        html += '<table class="sortable"><thead><tr><th>Učenec</th><th>Šola</th><th>Čas / dolžina</th><th>Mesto</th><th>Opombe</th><th></th></tr></thead><tbody>' +
+                vrstice + '</tbody></table>';
+      } else {
+        html += '<div class="prazno">V tej skupini ni učencev.</div>';
+      }
+    }
+    $('rz-skupine').innerHTML = html;
+
+    $('rz-pregled').style.display = 'none';
+    $('rz-detail').style.display = '';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function nazajRezultati(){
+  REZULTATI_AKTIVNA = null;
+  $('rz-pregled').style.display = '';
+  $('rz-detail').style.display = 'none';
+}
+
+function preklopiRezultatDisciplino(v){
+  var id = parseInt(v, 10);
+  if (isNaN(id)) return;
+  prikaziRezultateDiscipline(id);
+}
+
+function odpriModalRezultat(id, predDisciplina, predUcenec){
   var jeUrejanje = !!id;
   var dogodek = null;
   var priprava = Promise.all([natovoriUcence(), natovoriDiscipline()]).then(function(){
@@ -774,8 +882,10 @@ function odpriModalRezultat(id){
     }
   });
   priprava.then(function(){
-    var opcijeU = VSI_UCENCI.map(function(u){ return '<option value="' + u.id + '"' + (dogodek && dogodek.pupil_id === u.id ? ' selected' : '') + '>' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</option>'; }).join('');
-    var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '"' + (dogodek && dogodek.discipline_id === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('');
+    var izbranU = dogodek ? dogodek.pupil_id : (predUcenec || null);
+    var izbranD = dogodek ? dogodek.discipline_id : (predDisciplina || null);
+    var opcijeU = VSI_UCENCI.map(function(u){ return '<option value="' + u.id + '"' + (u.id === izbranU ? ' selected' : '') + '>' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</option>'; }).join('');
+    var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '"' + (d.id === izbranD ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('');
     $('modal-vsebina').innerHTML =
       '<h3>' + (jeUrejanje ? '✏️ Uredi rezultat' : '＋ Dodaj rezultat') + '</h3>' +
       '<div class="polje"><label>Učenec</label><select id="f-r-ucenec">' + opcijeU + '</select></div>' +
@@ -1090,6 +1200,76 @@ function odpriModal(){ $('modal-ozadje').classList.add('odprto'); }
 function zapriModal(){ $('modal-ozadje').classList.remove('odprto'); }
 $('modal-ozadje').addEventListener('click', function(e){ if (e.target === this) zapriModal(); });
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape') zapriModal(); });
+
+/* ================= SORTIRANJE TABEL ================= */
+// Vsaka tabela z razredom .sortable sortira s klikom na glavo stolpca:
+// 1. klik = naraščajoče, 2. klik = padajoče. Deluje za vse tabele (tudi dinamično
+// generirane), ker je handler delegiran na document.
+function _sortVrednost(t){
+  t = (t || '').replace(/\s+/g, ' ').trim();
+  if (t === '' || t === '—' || t === '–' || t === '-') return { n: null, v: null };
+  // Datum d.m.YYYY
+  var dm = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(t);
+  if (dm) return { n: new Date(+dm[3], +dm[2] - 1, +dm[1]).getTime(), v: t };
+  // Število: "12,5", "12.5", "1.", "15", tudi z enoto: "13,48 s", "5,20 m"
+  var nm = /^[\d]+([.,][\d]+)?\.?\s*([a-zA-Z]*)$/.exec(t);
+  if (nm && nm[2] !== 'r' && nm[2] !== 'R') return { n: parseFloat(t.replace(',', '.').replace(/\.$/, '').trim()), v: t };
+  return { n: null, v: t.toLowerCase() };
+}
+
+function _sortirajTabelo(tabela, th){
+  var tr = th.parentNode;
+  if (!tr) return;
+  var idx = Array.prototype.indexOf.call(tr.children, th);
+  if (idx < 0) return;
+  var tbody = tabela.querySelector('tbody');
+  if (!tbody) return;
+  // Smer: toggle (asc -> desc -> asc)
+  var smer = th.getAttribute('data-smer') === 'asc' ? 'desc' : 'asc';
+  // Počisti indikatorje in smer na ostalih glavah
+  var vsiTh = tabela.querySelectorAll('th');
+  for (var i = 0; i < vsiTh.length; i++){
+    if (vsiTh[i] !== th){
+      vsiTh[i].removeAttribute('data-smer');
+      vsiTh[i].textContent = vsiTh[i].textContent.replace(/[▲▼]\s*$/, '');
+    }
+  }
+  th.setAttribute('data-smer', smer);
+  th.textContent = th.textContent.replace(/[▲▼]\s*$/, '').trim() + (smer === 'asc' ? ' ▲' : ' ▼');
+
+  var vrstice = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+  vrstice.sort(function(a, b){
+    var va = _sortVrednost(a.children[idx] ? a.children[idx].textContent : '');
+    var vb = _sortVrednost(b.children[idx] ? b.children[idx].textContent : '');
+    // Prazne vrednosti vedno na konec (ne glede na smer)
+    if (va.n === null && va.v === null) return 1;
+    if (vb.n === null && vb.v === null) return -1;
+    var r;
+    if (va.n !== null && vb.n !== null) r = va.n - vb.n;
+    else if (va.n !== null) r = -1;
+    else if (vb.n !== null) r = 1;
+    else r = va.v < vb.v ? -1 : va.v > vb.v ? 1 : 0;
+    return smer === 'asc' ? r : -r;
+  });
+  vrstice.forEach(function(r){ tbody.appendChild(r); });
+  // Če je prvi stolpec "#" (zaporedna številka), jo po sortiranju preračunaj.
+  var prviTh = tabela.querySelector('th');
+  if (prviTh && prviTh.textContent.trim() === '#'){
+    var vse = tbody.querySelectorAll('tr');
+    for (var k = 0; k < vse.length; k++){
+      if (vse[k].children[0]) vse[k].children[0].textContent = (k + 1);
+    }
+  }
+}
+
+document.addEventListener('click', function(ev){
+  var el = ev.target;
+  while (el && el.tagName !== 'TH') el = el.parentNode;
+  if (!el) return;
+  var tabela = el.closest ? el.closest('table.sortable') : null;
+  if (!tabela) return;
+  _sortirajTabelo(tabela, el);
+});
 
 /* ================= ZAGON ================= */
 natovoriPregled();
