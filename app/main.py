@@ -5,10 +5,12 @@ Main FastAPI application entry point.
 from fastapi import FastAPI, Depends, HTTPException, Form, Query, UploadFile
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from typing import List, Optional
 import os
 import json
 from datetime import datetime
+from pathlib import Path
 
 from app.database import init_db, get_session
 from app.models import (
@@ -30,10 +32,18 @@ app = FastAPI(
 def get_db(session_locator=get_session):
     return session_locator()
 
-@app.get("/", summary="Home", response_model=dict)
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+@app.get("/", summary="Home", include_in_schema=False)
 async def home():
-    """Home page"""
+    """UI stran (static/index.html)."""
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file, media_type="text/html")
     return {"message": "Tekmovanja - Athletics Competition Manager"}
+
+# Static files (CSS/JS so inline v index.html; mount za morebitne dodatke)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # === SCHOOL MANAGEMENT ===
 
@@ -298,6 +308,7 @@ def list_pupils(db=Depends(get_db)):
             "first_name": p.first_name,
             "last_name": p.last_name,
             "school_id": p.school_id,
+            "school_name": p.school.name if p.school else None,
             "grade": p.grade,
             "gender": p.gender,
             "created_at": p.created_at.isoformat(),
@@ -436,7 +447,9 @@ def list_events(db=Depends(get_db)):
         {
             "id": e.id,
             "pupil_id": e.pupil_id,
+            "pupil_name": (e.pupil.first_name + " " + e.pupil.last_name) if e.pupil else None,
             "discipline_id": e.discipline_id,
+            "discipline_name": e.discipline.name if e.discipline else None,
             "time": e.time,
             "position": e.position,
             "notes": e.notes,
@@ -592,9 +605,13 @@ def list_records(db=Depends(get_db)):
         {
             "id": r.id,
             "discipline_id": r.discipline_id,
+            "discipline_name": r.discipline.name if r.discipline else None,
             "pupil_id": r.pupil_id,
+            "pupil_name": (r.pupil.first_name + " " + r.pupil.last_name) if r.pupil else None,
+            "pupil_grade": r.pupil.grade if r.pupil else None,
             "time": r.time,
-            "date_recorded": r.date_recorded.isoformat(),
+            "date_recorded": r.date_recorded.isoformat() if r.date_recorded else None,
+            "notes": r.notes,
             "created_at": r.created_at.isoformat(),
         }
         for r in records
@@ -658,6 +675,7 @@ def list_start_lists(db=Depends(get_db)):
         {
             "id": l.id,
             "discipline_id": l.discipline_id,
+            "discipline_name": l.discipline.name if l.discipline else None,
             "grade": l.grade,
             "event_date": l.event_date.isoformat(),
             "created_at": l.created_at.isoformat(),
@@ -1195,6 +1213,232 @@ def generate_results_pdf(events, discipline_id=None, school_id=None):
     content += "<p><em>Generated automatically by Tekmovanja</em></p>"
     
     return content
+
+# === UI CRUD PODPORA (preprost UI — dodaj/uredi/izbriši) ===
+
+@app.put("/pupils/{pupil_id}", response_model=dict, summary="Update pupil")
+def update_pupil(
+    pupil_id: int,
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    school_id: Optional[int] = Form(None),
+    grade: Optional[str] = Form(None),
+    gender: Optional[str] = Form(None),
+    db=Depends(get_db)
+):
+    """Update pupil details."""
+    pupil = db.query(Pupil).get(pupil_id)
+    if not pupil:
+        raise HTTPException(status_code=404, detail="Pupil not found")
+
+    if first_name is not None and first_name.strip():
+        pupil.first_name = first_name.strip()
+    if last_name is not None and last_name.strip():
+        pupil.last_name = last_name.strip()
+    if school_id is not None:
+        school = db.query(School).get(school_id)
+        if not school:
+            raise HTTPException(status_code=404, detail="School not found")
+        pupil.school_id = school_id
+    if grade is not None and grade.strip():
+        grade = grade.strip()
+        if grade not in ("2.r", "3.r"):
+            raise HTTPException(status_code=400, detail="Grade must be 2.r or 3.r")
+        pupil.grade = grade
+    if gender is not None and gender.strip():
+        gender = gender.strip().upper()
+        if gender not in ("M", "Ž"):
+            raise HTTPException(status_code=400, detail="Gender must be M or Ž")
+        pupil.gender = gender
+
+    pupil.updated_at = datetime.utcnow()
+    db.commit()
+    return {
+        "id": pupil.id,
+        "first_name": pupil.first_name,
+        "last_name": pupil.last_name,
+        "school_id": pupil.school_id,
+        "grade": pupil.grade,
+        "gender": pupil.gender,
+    }
+
+
+@app.delete("/pupils/{pupil_id}", response_model=dict, summary="Delete pupil")
+def delete_pupil(pupil_id: int, db=Depends(get_db)):
+    """Delete a pupil and their competition events and records."""
+    pupil = db.query(Pupil).get(pupil_id)
+    if not pupil:
+        raise HTTPException(status_code=404, detail="Pupil not found")
+
+    db.query(CompetitionEvent).filter(CompetitionEvent.pupil_id == pupil_id).delete()
+    db.query(Record).filter(Record.pupil_id == pupil_id).delete()
+    db.delete(pupil)
+    db.commit()
+    return {"message": f"Pupil {pupil.first_name} {pupil.last_name} deleted"}
+
+
+@app.delete("/events/{event_id}", response_model=dict, summary="Delete event/result")
+def delete_event(event_id: int, db=Depends(get_db)):
+    """Delete a single competition event (result)."""
+    event = db.query(CompetitionEvent).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    db.delete(event)
+    db.commit()
+    return {"message": f"Event {event_id} deleted"}
+
+
+@app.put("/events/{event_id}", response_model=dict, summary="Update event/result")
+def update_event(
+    event_id: int,
+    time: Optional[float] = Form(None),
+    position: Optional[int] = Form(None),
+    notes: Optional[str] = Form(None),
+    discipline_id: Optional[int] = Form(None),
+    db=Depends(get_db)
+):
+    """Update a competition event (result)."""
+    event = db.query(CompetitionEvent).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if time is not None:
+        if time < 0:
+            raise HTTPException(status_code=400, detail="Time must be positive")
+        event.time = float(time)
+    if position is not None:
+        if not 1 <= position <= 30:
+            raise HTTPException(status_code=400, detail="Position must be between 1 and 30")
+        event.position = position
+    if notes is not None:
+        event.notes = notes.strip() if notes.strip() else None
+    if discipline_id is not None:
+        disc = db.query(Discipline).get(discipline_id)
+        if not disc:
+            raise HTTPException(status_code=404, detail="Discipline not found")
+        event.discipline_id = discipline_id
+    event.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": f"Event {event_id} updated", "id": event.id}
+
+
+@app.post("/records", response_model=dict, summary="Add record manually")
+def add_record(
+    discipline_id: int = Form(...),
+    pupil_id: int = Form(...),
+    time: float = Form(...),
+    date_recorded: Optional[str] = Form(None),  # ISO YYYY-MM-DD
+    notes: Optional[str] = Form(None),
+    db=Depends(get_db)
+):
+    """Add a record manually (best result)."""
+    discipline = db.query(Discipline).get(discipline_id)
+    pupil = db.query(Pupil).get(pupil_id)
+    if not discipline or not pupil:
+        raise HTTPException(status_code=404, detail="Discipline or pupil not found")
+    if time < 0:
+        raise HTTPException(status_code=400, detail="Time must be positive")
+
+    rec_date = None
+    if date_recorded:
+        try:
+            rec_date = datetime.strptime(date_recorded, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date, use YYYY-MM-DD")
+
+    record = Record(
+        discipline_id=discipline_id,
+        pupil_id=pupil_id,
+        time=float(time),
+        date_recorded=rec_date or datetime.utcnow(),
+        notes=notes.strip() if notes else None,
+    )
+    db.add(record)
+    db.commit()
+    return {
+        "id": record.id,
+        "discipline_id": record.discipline_id,
+        "pupil_id": record.pupil_id,
+        "time": record.time,
+        "date_recorded": record.date_recorded.isoformat() if record.date_recorded else None,
+        "notes": record.notes,
+    }
+
+
+@app.put("/records/{record_id}", response_model=dict, summary="Update record")
+def update_record(
+    record_id: int,
+    time: Optional[float] = Form(None),
+    date_recorded: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    discipline_id: Optional[int] = Form(None),
+    pupil_id: Optional[int] = Form(None),
+    db=Depends(get_db)
+):
+    """Update a record (best result)."""
+    record = db.query(Record).get(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if time is not None:
+        if time < 0:
+            raise HTTPException(status_code=400, detail="Time must be positive")
+        record.time = float(time)
+    if date_recorded is not None:
+        try:
+            record.date_recorded = datetime.strptime(date_recorded, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date, use YYYY-MM-DD")
+    if notes is not None:
+        record.notes = notes.strip() if notes.strip() else None
+    if discipline_id is not None:
+        disc = db.query(Discipline).get(discipline_id)
+        if not disc:
+            raise HTTPException(status_code=404, detail="Discipline not found")
+        record.discipline_id = discipline_id
+    if pupil_id is not None:
+        pupil = db.query(Pupil).get(pupil_id)
+        if not pupil:
+            raise HTTPException(status_code=404, detail="Pupil not found")
+        record.pupil_id = pupil_id
+    db.commit()
+    return {"message": f"Record {record_id} updated", "id": record.id}
+
+
+@app.delete("/records/{record_id}", response_model=dict, summary="Delete record")
+def delete_record(record_id: int, db=Depends(get_db)):
+    """Delete a record (best result)."""
+    record = db.query(Record).get(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    db.delete(record)
+    db.commit()
+    return {"message": f"Record {record_id} deleted"}
+
+
+@app.post("/api/smtp", response_model=dict, summary="Save SMTP settings")
+def save_smtp_settings(
+    host: str = Form("smtp.arne.gov.si"),
+    port: int = Form(587),
+    user: str = Form(...),
+    password: str = Form(...),
+    db=Depends(get_db)
+):
+    """Save SMTP credentials (stored locally, never in git)."""
+    app_config.smtp_host = host.strip()
+    app_config.smtp_port = port
+    app_config.set_smtp_credentials(user.strip(), password)
+    return {"message": "Nastavitve e-pošte so shranjene."}
+
+
+@app.delete("/start-lists/{start_list_id}", response_model=dict, summary="Delete start list")
+def delete_start_list(start_list_id: int, db=Depends(get_db)):
+    """Delete a start list."""
+    start_list = db.query(StartList).get(start_list_id)
+    if not start_list:
+        raise HTTPException(status_code=404, detail="Start list not found")
+    db.delete(start_list)
+    db.commit()
+    return {"message": f"Start list {start_list_id} deleted"}
+
 
 # === HEALTH CHECK ===
 

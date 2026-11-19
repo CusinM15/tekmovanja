@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tekmovanja — upravljanje šolskega atletskega tekmovanja</title>
+<style>
+  :root{
+    --zelen:#2e7d32; --zelen-temna:#1b5e20; --zelen-svetla:#e8f5e9;
+    --modra:#1565c0; --modra-svetla:#e3f2fd;
+    --rdeca:#c62828; --rdeca-svetla:#ffebee;
+    --oranzna:#e65100; --oranzna-svetla:#fff3e0;
+    --siva:#546e7a; --siva-svetla:#eceff1;
+    --besedilo:#263238; --ozadje:#f5f7f8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',system-ui,Arial,sans-serif;background:var(--ozadje);color:var(--besedilo);font-size:16px;}
+  header{background:linear-gradient(135deg,var(--zelen),var(--zelen-temna));color:#fff;padding:18px 28px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  header h1{font-size:22px;font-weight:600;}
+  header .podnaslov{font-size:13px;opacity:.85;}
+  .tabi{display:flex;gap:6px;flex-wrap:wrap;padding:14px 28px 0;}
+  .tab{gap:8px;padding:12px 18px;border:none;border-radius:12px 12px 0 0;background:#dfe5e8;color:var(--besedilo);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;}
+  .tab:hover{background:#cdd6da;}
+  .tab.aktiven{background:#fff;color:var(--zelen);box-shadow:0 -2px 8px rgba(0,0,0,.08);}
+  main{max-width:1300px;margin:0 auto;padding:22px 28px 60px;}
+  .stran{display:none;background:#fff;border-radius:14px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+  .stran.aktivna{display:block;}
+  h2{font-size:20px;margin-bottom:6px;color:var(--zelen-temna);}
+  .opis{color:var(--siva);font-size:14px;margin-bottom:18px;}
+  .vrstica-gumbov{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .gumb{padding:12px 20px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:8px;}
+  .gumb:disabled{opacity:.5;cursor:not-allowed;}
+  .gumb-zelen{background:var(--zelen);} .gumb-zelen:hover{background:var(--zelen-temna);}
+  .gumb-moder{background:var(--modra);} .gumb-moder:hover{background:#0d47a1;}
+  .gumb-orange{background:var(--oranzna);} .gumb-orange:hover{background:#bf360c;}
+  .gumb-rdec{background:var(--rdeca);} .gumb-rdec:hover{background:#b71c1c;}
+  .gumb-siv{background:var(--siva);} .gumb-siv:hover{background:#455a64;}
+  .gumb-majhen{padding:7px 12px;font-size:13px;border-radius:8px;}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:15px;}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #e3e8ea;}
+  th{background:var(--siva-svetla);color:var(--siva);font-size:13px;text-transform:uppercase;letter-spacing:.4px;}
+  tr:hover td{background:#f8fafb;}
+  .kartice{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;}
+  .kartica{background:var(--modra-svetla);border-radius:12px;padding:18px;text-align:center;}
+  .kartica .stevilo{font-size:34px;font-weight:700;color:var(--modra);}
+  .kartica .ime{font-size:14px;color:var(--siva);margin-top:4px;}
+  .kartica.zelena{background:var(--zelen-svetla);} .kartica.zelena .stevilo{color:var(--zelen);}
+  .kartica.orange{background:var(--oranzna-svetla);} .kartica.orange .stevilo{color:var(--oranzna);}
+  .kartica.rdeca{background:var(--rdeca-svetla);} .kartica.rdeca .stevilo{color:var(--rdeca);}
+  .prazno{color:var(--siva);font-style:italic;padding:16px 0;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:600;}
+  .badge-zelena{background:var(--zelen-svetla);color:var(--zelen);}
+  .badge-siva{background:var(--siva-svetla);color:var(--siva);}
+  .badge-orange{background:var(--oranzna-svetla);color:var(--oranzna);}
+  .badge-moder{background:var(--modra-svetla);color:var(--modra);}
+  .modal-ozadje{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center;padding:20px;}
+  .modal-ozadje.odprto{display:flex;}
+  .modal{background:#fff;border-radius:16px;padding:26px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);}
+  .modal h3{font-size:19px;margin-bottom:16px;color:var(--zelen-temna);}
+  .polje{margin-bottom:14px;}
+  .polje label{display:block;font-size:14px;font-weight:600;margin-bottom:5px;color:var(--siva);}
+  .polje input,.polje select,.polje textarea{width:100%;padding:11px 13px;border:2px solid #d5dde0;border-radius:9px;font-size:15px;font-family:inherit;}
+  .polje input:focus,.polje select:focus,.polje textarea:focus{outline:none;border-color:var(--zelen);}
+  .modal-gumbi{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+  .opozorilo{background:var(--rdeca-svetla);border-left:5px solid var(--rdeca);padding:14px 16px;border-radius:8px;margin:14px 0;font-size:14px;line-height:1.5;}
+  .info{background:var(--modra-svetla);border-left:5px solid var(--modra);padding:14px 16px;border-radius:8px;margin:14px 0;font-size:14px;line-height:1.5;}
+  .toast{position:fixed;bottom:26px;right:26px;background:var(--besedilo);color:#fff;padding:14px 22px;border-radius:10px;font-size:15px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.3);display:none;}
+  .toast.zelena{background:var(--zelen);} .toast.rdeca{background:var(--rdeca);}
+  .vnos-iskanja{margin-bottom:14px;}
+  .vnos-iskanja input{width:100%;max-width:360px;padding:11px 13px;border:2px solid #d5dde0;border-radius:9px;font-size:15px;}
+  .povezava{color:var(--modra);cursor:pointer;text-decoration:underline;margin-right:10px;font-size:14px;}
+  .povezava.rdeca{color:var(--rdeca);}
+  @media (max-width:700px){
+    header{padding:14px 16px;} .tabi{padding:10px 16px 0;} main{padding:16px;}
+    .tab{font-size:14px;padding:10px 12px;}
+    table{font-size:13px;} th,td{padding:8px;}
+    .gumb{padding:10px 14px;font-size:14px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏆 Tekmovanja</h1>
+  <span class="podnaslov">Upravljanje šolskega atletskega tekmovanja</span>
+</header>
+
+<div class="tabi" id="tabi">
+  <button class="tab aktiven" data-tab="pregled" onclick="preklopiTab('pregled')">📊 Pregled</button>
+  <button class="tab" data-tab="sole" onclick="preklopiTab('sole')">🏫 Šole</button>
+  <button class="tab" data-tab="ucenci" onclick="preklopiTab('ucenci')">👦 Učenci</button>
+  <button class="tab" data-tab="discipline" onclick="preklopiTab('discipline')">🏃 Discipline</button>
+  <button class="tab" data-tab="rezultati" onclick="preklopiTab('rezultati')">⏱️ Rezultati</button>
+  <button class="tab" data-tab="rekordi" onclick="preklopiTab('rekordi')">🥇 Rekordi</button>
+  <button class="tab" data-tab="startne" onclick="preklopiTab('startne')">📋 Štartne liste</button>
+  <button class="tab" data-tab="podatki" onclick="preklopiTab('podatki')">🗄️ Uvoz in pošta</button>
+</div>
+
+<main>
+  <!-- ============ PREGLED ============ -->
+  <section class="stran aktivna" id="stran-pregled">
+    <h2>Pregled tekmovanja</h2>
+    <p class="opis">Tu vidite vse glavne podatke na enem mestu.</p>
+    <div class="kartice" id="kartice-pregled"></div>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-moder" onclick="preklopiTab('sole')">🏫 Uredi šole</button>
+      <button class="gumb gumb-zelen" onclick="preklopiTab('ucenci')">👦 Vnesi učence</button>
+      <button class="gumb gumb-orange" onclick="preklopiTab('rezultati')">⏱️ Vnesi rezultate</button>
+      <button class="gumb gumb-moder" onclick="preklopiTab('rekordi')">🥇 Poglej rekorde</button>
+    </div>
+  </section>
+
+  <!-- ============ ŠOLE ============ -->
+  <section class="stran" id="stran-sole">
+    <h2>Šole</h2>
+    <p class="opis">Seznam šol, ki sodelujejo na tekmovanju. Odstranjena šola ostane v zgodovini, a ne prejema več povabil.</p>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="odpriModalSola()">＋ Dodaj šolo</button>
+      <button class="gumb gumb-siv" onclick="aktivirajVseSole()">↩️ Vrni vse šole v aktivni seznam</button>
+    </div>
+    <table>
+      <thead><tr><th>Šola</th><th>E-pošta</th><th>Status</th><th></th></tr></thead>
+      <tbody id="tabela-sole"></tbody>
+    </table>
+    <div class="prazno" id="prazno-sole" style="display:none">Ni še nobene šole.</div>
+  </section>
+
+  <!-- ============ UČENCI ============ -->
+  <section class="stran" id="stran-ucenci">
+    <h2>Učenci</h2>
+    <p class="opis">Seznam učencev iz vseh šol.</p>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="odpriModalUcenec()">＋ Dodaj učenca</button>
+      <button class="gumb gumb-moder" onclick="odpriModalUvozCsv()">📄 Uvozi učence iz CSV</button>
+    </div>
+    <div class="vnos-iskanja"><input id="iskanje-ucenci" placeholder="Išči po imenu ali šoli..." oninput="prikaziUcence()"></div>
+    <table>
+      <thead><tr><th>Ime in priimek</th><th>Šola</th><th>Razred</th><th>Spol</th><th></th></tr></thead>
+      <tbody id="tabela-ucenci"></tbody>
+    </table>
+    <div class="prazno" id="prazno-ucenci" style="display:none">Ni še nobenega učenca.</div>
+  </section>
+
+  <!-- ============ DISCIPLINE ============ -->
+  <section class="stran" id="stran-discipline">
+    <h2>Discipline</h2>
+    <p class="opis">Športne discipline tekmovanja. Odstranitev discipline ne izbriše njenih rezultatov iz zgodovine.</p>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="odpriModalDisciplina()">＋ Dodaj disciplino</button>
+    </div>
+    <table>
+      <thead><tr><th>Disciplina</th><th>Spol</th><th>Razredi</th><th></th></tr></thead>
+      <tbody id="tabela-discipline"></tbody>
+    </table>
+    <div class="prazno" id="prazno-discipline" style="display:none">Ni še nobene discipline.</div>
+  </section>
+
+  <!-- ============ REZULTATI ============ -->
+  <section class="stran" id="stran-rezultati">
+    <h2>Rezultati tekmovanja</h2>
+    <p class="opis">Vnesite rezultate učencev po posameznih disciplinah.</p>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
+    </div>
+    <table>
+      <thead><tr><th>Učenec</th><th>Disciplina</th><th>Čas / dolžina</th><th>Mesto</th><th>Opombe</th><th></th></tr></thead>
+      <tbody id="tabela-rezultati"></tbody>
+    </table>
+    <div class="prazno" id="prazno-rezultati" style="display:none">Ni še vnesenih rezultatov.</div>
+  </section>
+
+  <!-- ============ REKORDI ============ -->
+  <section class="stran" id="stran-rekordi">
+    <h2>Rekordi (najboljši rezultati)</h2>
+    <p class="opis">Tu lahko dodajate, urejate in brišete najboljše rezultate (rekorde). Rekordi ostanejo shranjeni tudi po koncu tekmovanja.</p>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="odpriModalRekord()">＋ Dodaj rekord</button>
+      <button class="gumb gumb-moder" onclick="natovoriRekorde()">🔄 Osveži</button>
+    </div>
+    <table>
+      <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Čas / dolžina</th><th>Datum</th><th>Opombe</th><th></th></tr></thead>
+      <tbody id="tabela-rekordi"></tbody>
+    </table>
+    <div class="prazno" id="prazno-rekordi" style="display:none">Ni še zabeleženih rekordov.</div>
+  </section>
+
+  <!-- ============ ŠTARTNE LISTE ============ -->
+  <section class="stran" id="stran-startne">
+    <h2>Štartne liste</h2>
+    <p class="opis">Ustvarite štartno listo za disciplino, razred in datum.</p>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="odpriModalStartna()">＋ Nova štartna lista</button>
+    </div>
+    <table>
+      <thead><tr><th>Disciplina</th><th>Razred</th><th>Datum</th><th></th></tr></thead>
+      <tbody id="tabela-startne"></tbody>
+    </table>
+    <div class="prazno" id="prazno-startne" style="display:none">Ni še štartnih list.</div>
+  </section>
+
+  <!-- ============ PODATKI / POŠTA ============ -->
+  <section class="stran" id="stran-podatki">
+    <h2>Uvoz podatkov in pošiljanje</h2>
+    <p class="opis">Uvozite učence iz CSV datoteke ali pošljite povabila in rezultate šolam.</p>
+
+    <div class="info">💡 <strong>Uvoz CSV:</strong> šolam pošljete predlogo, one jo izpolnijo in vrnejo, vi pa datoteko uvozite tukaj.</div>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-moder" onclick="prenesiPredlogoCsv()">📥 Prenesi prazno predlogo (CSV)</button>
+      <button class="gumb gumb-zelen" onclick="odpriModalUvozCsv()">📄 Uvozi izpolnjeno CSV</button>
+      <button class="gumb gumb-orange" onclick="posljiVabila()">✉️ Pošlji povabila šolam</button>
+      <button class="gumb gumb-orange" onclick="posljiRezultate()">✉️ Pošlji rezultate šolam</button>
+      <button class="gumb gumb-moder" onclick="odpriModalSmtp()">⚙️ Nastavitve e-pošte</button>
+    </div>
+
+    <h2 style="margin-top:26px">Brisanje podatkov tekmovanja</h2>
+    <p class="opis">S tem gumbom počistite podatke tekmovanja (učence in rezultate). Šole, discipline in rekordi (najboljši rezultati) ostanejo shranjeni.</p>
+    <div class="opozorilo">⚠️ Ta ukaz <strong>trajno izbriše</strong> vse učence in vse rezultate tekmovanja. Tega ni mogoče razveljaviti! Šole, discipline in rekordi ostanejo.</div>
+    <button class="gumb gumb-rdec" onclick="pocistiPodatke()">🗑️ Počisti podatke tekmovanja</button>
+  </section>
+</main>
+
+<!-- ============ MODALI ============ -->
+<div class="modal-ozadje" id="modal-ozadje">
+  <div class="modal" id="modal-vsebina"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ================= pomožne funkcije ================= */
+function $(id){ return document.getElementById(id); }
+
+function toast(besedilo, tip){
+  var t = $('toast');
+  t.textContent = besedilo;
+  t.className = 'toast' + (tip === 'napaka' ? ' rdeca' : tip === 'ok' ? ' zelena' : '');
+  t.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ t.style.display = 'none'; }, 4000);
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function casLepo(v){
+  if (v == null || v === '') return '';
+  var n = parseFloat(v);
+  if (isNaN(n)) return esc(v);
+  if (n >= 60) {
+    var m = Math.floor(n / 60), s = (n % 60).toFixed(2);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  return n.toFixed(2).replace('.', ',') + ' s';
+}
+
+function datumLepo(iso){
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d)) return esc(iso);
+  return d.getDate() + '.' + (d.getMonth()+1) + '.' + d.getFullYear();
+}
+
+function preklopiTab(ime){
+  var tabi = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabi.length; i++) tabi[i].classList.toggle('aktiven', tabi[i].getAttribute('data-tab') === ime);
+  var strani = document.querySelectorAll('.stran');
+  for (var j = 0; j < strani.length; j++) strani[j].classList.toggle('aktivna', strani[j].id === 'stran-' + ime);
+  if (ime === 'ucenci') prikaziUcence();
+  if (ime === 'rekordi') natovoriRekorde();
+  if (ime === 'rezultati') natovoriRezultate();
+  if (ime === 'startne') natovoriStartne();
+  if (ime === 'pregled') natovoriPregled();
+}
+
+/* ================= API ================= */
+function api(path, metoda, podatki){
+  var opts = { method: metoda || 'GET', headers: {} };
+  if (podatki){
+    if (podatki instanceof FormData){
+      opts.body = podatki;
+    } else {
+      opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      var deli = [];
+      for (var k in podatki){
+        if (podatki[k] !== undefined && podatki[k] !== null) deli.push(encodeURIComponent(k) + '=' + encodeURIComponent(podatki[k]));
+      }
+      opts.body = deli.join('&');
+    }
+  }
+  return fetch(path, opts).then(function(r){
+    return r.json().catch(function(){ return {}; }).then(function(data){
+      if (!r.ok){
+        var napaka = (data && data.detail) ? data.detail : ('Napaka ' + r.status);
+        throw new Error(napaka);
+      }
+      return data;
+    });
+  });
+}
+
+/* ================= PREGLED ================= */
+function natovoriPregled(){
+  Promise.all([api('/schools'), api('/pupils'), api('/disciplines'), api('/events'), api('/records')]).then(function(rez){
+    var sole = rez[0], ucenci = rez[1], disc = rez[2], dogodki = rez[3], rekordi = rez[4];
+    var aktivne = sole.filter(function(s){ return s.status === 'active'; }).length;
+    $('kartice-pregled').innerHTML =
+      '<div class="kartica zelena"><div class="stevilo">' + aktivne + '</div><div class="ime">Aktivne šole</div></div>' +
+      '<div class="kartica"><div class="stevilo">' + ucenci.length + '</div><div class="ime">Učenci</div></div>' +
+      '<div class="kartica orange"><div class="stevilo">' + disc.length + '</div><div class="ime">Discipline</div></div>' +
+      '<div class="kartica"><div class="stevilo">' + dogodki.length + '</div><div class="ime">Rezultati</div></div>' +
+      '<div class="kartica rdeca"><div class="stevilo">' + rekordi.length + '</div><div class="ime">Rekordi</div></div>';
+  }).catch(function(e){ toast('Napaka pri nalaganju pregleda: ' + e.message, 'napaka'); });
+}
+
+/* ================= ŠOLE ================= */
+function natovoriSole(){
+  return api('/schools?include_inactive=True').then(function(sole){
+    var vrstice = '';
+    for (var i = 0; i < sole.length; i++){
+      var s = sole[i];
+      var aktiven = s.status === 'active';
+      vrstice += '<tr>' +
+        '<td>' + esc(s.name) + '</td>' +
+        '<td>' + esc(s.email) + '</td>' +
+        '<td>' + (aktiven ? '<span class="badge badge-zelena">Aktivna</span>' : '<span class="badge badge-siva">Neaktivna</span>') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<span class="povezava" onclick="odpriModalSola(' + s.id + ')">✏️ Uredi</span>' +
+          (aktiven
+            ? '<span class="povezava rdeca" onclick="deaktivirajSolo(' + s.id + ')">🚫 Odstrani</span>'
+            : '<span class="povezava" onclick="aktivirajSolo(' + s.id + ')">✅ Vrni nazaj</span>') +
+        '</td></tr>';
+    }
+    $('tabela-sole').innerHTML = vrstice;
+    $('prazno-sole').style.display = sole.length ? 'none' : 'block';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriModalSola(id){
+  var jeUrejanje = !!id;
+  var sola = null;
+  var procitaj = Promise.resolve();
+  if (jeUrejanje){
+    procitaj = api('/schools?include_inactive=True').then(function(s){
+      for (var i = 0; i < s.length; i++) if (s[i].id === id) sola = s[i];
+      return sola;
+    });
+  }
+  procitaj.then(function(){
+    $('modal-vsebina').innerHTML =
+      '<h3>' + (jeUrejanje ? '✏️ Uredi šolo' : '＋ Dodaj šolo') + '</h3>' +
+      '<div class="polje"><label>Naziv šole</label><input id="f-sola-ime" value="' + esc(sola ? sola.name : '') + '"></div>' +
+      '<div class="polje"><label>E-poštni naslov (Arnes)</label><input id="f-sola-email" value="' + esc(sola ? sola.email : '') + '"></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniSolo(' + (id || 'null') + ')">Shrani</button>' +
+      '</div>';
+    odpriModal();
+  });
+}
+
+function shraniSolo(id){
+  var ime = $('f-sola-ime').value.trim();
+  var email = $('f-sola-email').value.trim();
+  if (!ime){ toast('Vnesite naziv šole.', 'napaka'); return; }
+  if (!email){ toast('Vnesite e-poštni naslov.', 'napaka'); return; }
+  var zahteva = id
+    ? api('/schools/' + id, 'PUT', { name: ime, email: email })
+    : api('/schools', 'POST', { name: ime, email: email });
+  zahteva.then(function(){
+    toast(id ? 'Šola posodobljena.' : 'Šola dodana.', 'ok');
+    zapriModal(); natovoriSole(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function deaktivirajSolo(id){
+  if (!confirm('Ali res želite odstraniti to šolo iz aktivnega seznama?\n\nZgodovina rezultatov šole ostane shranjena.')) return;
+  api('/schools/' + id, 'DELETE').then(function(){ toast('Šola odstranjena iz aktivnega seznama.', 'ok'); natovoriSole(); natovoriPregled(); })
+    .catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function aktivirajSolo(id){
+  api('/schools/' + id, 'PUT', { status: 'active' }).then(function(){ toast('Šola vrnjena v aktivni seznam.', 'ok'); natovoriSole(); natovoriPregled(); })
+    .catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function aktivirajVseSole(){
+  api('/schools', 'DELETE').then(function(r){ toast(r.message || 'Vse šole so aktivne.', 'ok'); natovoriSole(); natovoriPregled(); })
+    .catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= UČENCI ================= */
+var VSI_UCENCI = [];
+var VSE_SOLE = [];
+var VSE_DISCIPLINE = [];
+
+function natovoriUcence(){
+  return Promise.all([api('/pupils'), api('/schools?include_inactive=True')]).then(function(rez){
+    VSI_UCENCI = rez[0];
+    VSE_SOLE = rez[1];
+    prikaziUcence();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function prikaziUcence(){
+  var q = ($('iskanje-ucenci') ? $('iskanje-ucenci').value : '').toLowerCase();
+  var seznam = VSI_UCENCI.filter(function(u){
+    if (!q) return true;
+    var ime = (u.first_name + ' ' + u.last_name).toLowerCase();
+    var sola = (u.school_name || '').toLowerCase();
+    return ime.indexOf(q) !== -1 || sola.indexOf(q) !== -1;
+  });
+  var vrstice = '';
+  for (var i = 0; i < seznam.length; i++){
+    var u = seznam[i];
+    vrstice += '<tr>' +
+      '<td><strong>' + esc(u.first_name + ' ' + u.last_name) + '</strong></td>' +
+      '<td>' + esc(u.school_name || '—') + '</td>' +
+      '<td>' + esc(u.grade) + '</td>' +
+      '<td>' + (u.gender === 'Ž' ? '♀ Ž' : '♂ M') + '</td>' +
+      '<td style="text-align:right;white-space:nowrap">' +
+        '<span class="povezava" onclick="odpriModalUcenec(' + u.id + ')">✏️ Uredi</span>' +
+        '<span class="povezava rdeca" onclick="izbrisiUcenca(' + u.id + ')">🗑️ Izbriši</span>' +
+      '</td></tr>';
+  }
+  $('tabela-ucenci').innerHTML = vrstice;
+  $('prazno-ucenci').style.display = VSI_UCENCI.length ? 'none' : 'block';
+}
+
+function odpriModalUcenec(id){
+  var jeUrejanje = !!id;
+  var ucenec = null;
+  for (var i = 0; i < VSI_UCENCI.length; i++) if (VSI_UCENCI[i].id === id) ucenec = VSI_UCENCI[i];
+  var opcijeSole = VSE_SOLE.map(function(s){ return '<option value="' + s.id + '"' + (ucenec && ucenec.school_id === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('');
+  $('modal-vsebina').innerHTML =
+    '<h3>' + (jeUrejanje ? '✏️ Uredi učenca' : '＋ Dodaj učenca') + '</h3>' +
+    '<div class="polje"><label>Ime</label><input id="f-u-ime" value="' + esc(ucenec ? ucenec.first_name : '') + '"></div>' +
+    '<div class="polje"><label>Priimek</label><input id="f-u-priimek" value="' + esc(ucenec ? ucenec.last_name : '') + '"></div>' +
+    '<div class="polje"><label>Šola</label><select id="f-u-sola">' + opcijeSole + '</select></div>' +
+    '<div class="polje"><label>Razred</label><select id="f-u-razred">' +
+      '<option value="2.r"' + (ucenec && ucenec.grade === '2.r' ? ' selected' : '') + '>2. razred</option>' +
+      '<option value="3.r"' + (ucenec && ucenec.grade === '3.r' ? ' selected' : '') + '>3. razred</option>' +
+    '</select></div>' +
+    '<div class="polje"><label>Spol</label><select id="f-u-spol">' +
+      '<option value="M"' + (ucenec && ucenec.gender === 'M' ? ' selected' : '') + '>♂ Fant</option>' +
+      '<option value="Ž"' + (ucenec && ucenec.gender === 'Ž' ? ' selected' : '') + '>♀ Punca</option>' +
+    '</select></div>' +
+    '<div class="modal-gumbi">' +
+      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+      '<button class="gumb gumb-zelen" onclick="shraniUcenca(' + (id || 'null') + ')">Shrani</button>' +
+    '</div>';
+  odpriModal();
+}
+
+function shraniUcenca(id){
+  var pod = {
+    first_name: $('f-u-ime').value.trim(),
+    last_name: $('f-u-priimek').value.trim(),
+    school_id: parseInt($('f-u-sola').value, 10),
+    grade: $('f-u-razred').value,
+    gender: $('f-u-spol').value
+  };
+  if (!pod.first_name || !pod.last_name){ toast('Vnesite ime in priimek.', 'napaka'); return; }
+  var zahteva = id
+    ? api('/pupils/' + id, 'PUT', pod)
+    : api('/pupils', 'POST', pod);
+  zahteva.then(function(){
+    toast(id ? 'Učenec posodobljen.' : 'Učenec dodan.', 'ok');
+    zapriModal(); natovoriUcence(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiUcenca(id){
+  var u = null;
+  for (var i = 0; i < VSI_UCENCI.length; i++) if (VSI_UCENCI[i].id === id) u = VSI_UCENCI[i];
+  var ime = u ? (u.first_name + ' ' + u.last_name) : '';
+  if (!confirm('Ali res želite izbrisati učenca ' + ime + '?\n\nIzbrišejo se tudi njegovi rezultati in rekordi. Tega ni mogoče razveljaviti!')) return;
+  api('/pupils/' + id, 'DELETE').then(function(){
+    toast('Učenec izbrisan.', 'ok');
+    natovoriUcence(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= DISCIPLINE ================= */
+function natovoriDiscipline(){
+  return api('/disciplines').then(function(disc){
+    VSE_DISCIPLINE = disc;
+    var vrstice = '';
+    for (var i = 0; i < disc.length; i++){
+      var d = disc[i];
+      vrstice += '<tr>' +
+        '<td><strong>' + esc(d.name) + '</strong></td>' +
+        '<td>' + (d.gender === 'Ž' || d.gender === 'ž' ? '♀ Ženske' : '♂ Moški') + '</td>' +
+        '<td>' + esc(d.applicable_grades || '') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<span class="povezava" onclick="odpriModalDisciplina(' + d.id + ')">✏️ Uredi</span>' +
+          '<span class="povezava rdeca" onclick="izbrisiDisciplino(' + d.id + ')">🗑️ Odstrani</span>' +
+        '</td></tr>';
+    }
+    $('tabela-discipline').innerHTML = vrstice;
+    $('prazno-discipline').style.display = disc.length ? 'none' : 'block';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriModalDisciplina(id){
+  var jeUrejanje = !!id;
+  var disc = null;
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === id) disc = VSE_DISCIPLINE[i];
+  $('modal-vsebina').innerHTML =
+    '<h3>' + (jeUrejanje ? '✏️ Uredi disciplino' : '＋ Dodaj disciplino') + '</h3>' +
+    '<div class="polje"><label>Naziv discipline</label><input id="f-d-ime" value="' + esc(disc ? disc.name : '') + '" placeholder="npr. tek 60m M"></div>' +
+    '<div class="polje"><label>Spol</label><select id="f-d-spol">' +
+      '<option value="M"' + (disc && (disc.gender === 'M') ? ' selected' : '') + '>♂ Moški</option>' +
+      '<option value="Ž"' + (disc && (disc.gender === 'Ž' || disc.gender === 'ž') ? ' selected' : '') + '>♀ Ženske</option>' +
+    '</select></div>' +
+    '<div class="polje"><label>Razredi (ločeno z vejico)</label><input id="f-d-razredi" value="' + esc(disc ? disc.applicable_grades : '2.r,3.r') + '"></div>' +
+    '<div class="modal-gumbi">' +
+      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+      '<button class="gumb gumb-zelen" onclick="shraniDisciplino(' + (id || 'null') + ')">Shrani</button>' +
+    '</div>';
+  odpriModal();
+}
+
+function shraniDisciplino(id){
+  var pod = {
+    name: $('f-d-ime').value.trim(),
+    gender: $('f-d-spol').value,
+    applicable_grades: $('f-d-razredi').value.trim()
+  };
+  if (!pod.name){ toast('Vnesite naziv discipline.', 'napaka'); return; }
+  var zahteva = id
+    ? api('/disciplines/' + id, 'PUT', pod)
+    : api('/disciplines', 'POST', pod);
+  zahteva.then(function(){
+    toast(id ? 'Disciplina posodobljena.' : 'Disciplina dodana.', 'ok');
+    zapriModal(); natovoriDiscipline(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiDisciplino(id){
+  if (!confirm('Ali res želite odstraniti to disciplino?\n\nRezultati iz zgodovine ostanejo shranjeni.')) return;
+  api('/disciplines/' + id, 'DELETE').then(function(r){
+    toast(r.message || 'Disciplina odstranjena.', 'ok');
+    natovoriDiscipline(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= REZULTATI ================= */
+function natovoriRezultate(){
+  return api('/events').then(function(dogodki){
+    var vrstice = '';
+    for (var i = 0; i < dogodki.length; i++){
+      var e = dogodki[i];
+      vrstice += '<tr>' +
+        '<td>' + esc(e.pupil_name || '—') + '</td>' +
+        '<td>' + esc(e.discipline_name || '—') + '</td>' +
+        '<td><strong>' + casLepo(e.time) + '</strong></td>' +
+        '<td>' + esc(e.position != null ? e.position + '.' : '—') + '</td>' +
+        '<td>' + esc(e.notes || '') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi</span>' +
+          '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši</span>' +
+        '</td></tr>';
+    }
+    $('tabela-rezultati').innerHTML = vrstice;
+    $('prazno-rezultati').style.display = dogodki.length ? 'none' : 'block';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriModalRezultat(id){
+  var jeUrejanje = !!id;
+  var dogodek = null;
+  var priprava = Promise.all([natovoriUcence(), natovoriDiscipline()]).then(function(){
+    if (id){
+      return api('/events').then(function(d){ for (var i = 0; i < d.length; i++) if (d[i].id === id) dogodek = d[i]; });
+    }
+  });
+  priprava.then(function(){
+    var opcijeU = VSI_UCENCI.map(function(u){ return '<option value="' + u.id + '"' + (dogodek && dogodek.pupil_id === u.id ? ' selected' : '') + '>' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</option>'; }).join('');
+    var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '"' + (dogodek && dogodek.discipline_id === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('');
+    $('modal-vsebina').innerHTML =
+      '<h3>' + (jeUrejanje ? '✏️ Uredi rezultat' : '＋ Dodaj rezultat') + '</h3>' +
+      '<div class="polje"><label>Učenec</label><select id="f-r-ucenec">' + opcijeU + '</select></div>' +
+      '<div class="polje"><label>Disciplina</label><select id="f-r-disciplina">' + opcijeD + '</select></div>' +
+      '<div class="polje"><label>Čas (v sekundah, npr. 12,5 ali 10.23)</label><input id="f-r-cas" value="' + esc(dogodek ? String(dogodek.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+      '<div class="polje"><label>Mesto (1–30)</label><input id="f-r-mesto" type="number" min="1" max="30" value="' + esc(dogodek && dogodek.position != null ? dogodek.position : '') + '"></div>' +
+      '<div class="polje"><label>Opombe (neobvezno)</label><textarea id="f-r-opombe" rows="2">' + esc(dogodek ? dogodek.notes || '' : '') + '</textarea></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniRezultat(' + (id || 'null') + ')">Shrani</button>' +
+      '</div>';
+    odpriModal();
+  });
+}
+
+function shraniRezultat(id){
+  var cas = parseFloat(($('f-r-cas').value || '').replace(',', '.'));
+  var mesto = parseInt($('f-r-mesto').value, 10);
+  if (isNaN(cas) || cas < 0){ toast('Vnesite veljaven čas.', 'napaka'); return; }
+  if (isNaN(mesto) || mesto < 1 || mesto > 30){ toast('Vnesite mesto med 1 in 30.', 'napaka'); return; }
+  var pod = {
+    pupil_id: parseInt($('f-r-ucenec').value, 10),
+    discipline_id: parseInt($('f-r-disciplina').value, 10),
+    time: cas,
+    position: mesto,
+    notes: $('f-r-opombe').value.trim() || null
+  };
+  var zahteva = id
+    ? api('/events/' + id, 'PUT', pod)
+    : api('/events', 'POST', pod);
+  zahteva.then(function(){
+    toast(id ? 'Rezultat posodobljen.' : 'Rezultat dodan.', 'ok');
+    zapriModal(); natovoriRezultate(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiRezultat(id){
+  if (!confirm('Ali res želite izbrisati ta rezultat?')) return;
+  api('/events/' + id, 'DELETE').then(function(){
+    toast('Rezultat izbrisan.', 'ok');
+    natovoriRezultate(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= REKORDI ================= */
+function natovoriRekorde(){
+  return Promise.all([api('/records'), api('/pupils'), api('/disciplines')]).then(function(rez){
+    var rekordi = rez[0];
+    VSI_UCENCI = rez[1];
+    VSE_DISCIPLINE = rez[2];
+    var vrstice = '';
+    for (var i = 0; i < rekordi.length; i++){
+      var r = rekordi[i];
+      vrstice += '<tr>' +
+        '<td><strong>' + esc(r.pupil_name || '—') + '</strong></td>' +
+        '<td>' + esc(r.pupil_grade || '') + '</td>' +
+        '<td>' + esc(r.discipline_name || '—') + '</td>' +
+        '<td><strong>' + casLepo(r.time) + '</strong></td>' +
+        '<td>' + datumLepo(r.date_recorded) + '</td>' +
+        '<td>' + esc(r.notes || '') + '</td>' +
+        '<td style="text-align:right;white-space:nowrap">' +
+          '<span class="povezava" onclick="odpriModalRekord(' + r.id + ')">✏️ Uredi</span>' +
+          '<span class="povezava rdeca" onclick="izbrisiRekord(' + r.id + ')">🗑️ Izbriši</span>' +
+        '</td></tr>';
+    }
+    $('tabela-rekordi').innerHTML = vrstice;
+    $('prazno-rekordi').style.display = rekordi.length ? 'none' : 'block';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriModalRekord(id){
+  var jeUrejanje = !!id;
+  var rekord = null;
+  var priprava = Promise.all([natovoriUcence(), natovoriDiscipline()]).then(function(){
+    if (id){
+      return api('/records').then(function(d){ for (var i = 0; i < d.length; i++) if (d[i].id === id) rekord = d[i]; });
+    }
+  });
+  priprava.then(function(){
+    var opcijeU = VSI_UCENCI.map(function(u){ return '<option value="' + u.id + '"' + (rekord && rekord.pupil_id === u.id ? ' selected' : '') + '>' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</option>'; }).join('');
+    var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '"' + (rekord && rekord.discipline_id === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('');
+    var datum = '';
+    if (rekord && rekord.date_recorded){
+      var d = new Date(rekord.date_recorded);
+      if (!isNaN(d)) datum = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    $('modal-vsebina').innerHTML =
+      '<h3>' + (jeUrejanje ? '✏️ Uredi rekord' : '＋ Dodaj rekord') + '</h3>' +
+      '<div class="polje"><label>Učenec</label><select id="f-k-ucenec">' + opcijeU + '</select></div>' +
+      '<div class="polje"><label>Disciplina</label><select id="f-k-disciplina">' + opcijeD + '</select></div>' +
+      '<div class="polje"><label>Čas / dolžina (v sekundah, npr. 12,5)</label><input id="f-k-cas" value="' + esc(rekord ? String(rekord.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+      '<div class="polje"><label>Datum (neobvezno)</label><input id="f-k-datum" type="date" value="' + esc(datum) + '"></div>' +
+      '<div class="polje"><label>Opombe (neobvezno)</label><textarea id="f-k-opombe" rows="2">' + esc(rekord ? rekord.notes || '' : '') + '</textarea></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniRekord(' + (id || 'null') + ')">Shrani</button>' +
+      '</div>';
+    odpriModal();
+  });
+}
+
+function shraniRekord(id){
+  var cas = parseFloat(($('f-k-cas').value || '').replace(',', '.'));
+  if (isNaN(cas) || cas < 0){ toast('Vnesite veljaven čas.', 'napaka'); return; }
+  var pod = {
+    discipline_id: parseInt($('f-k-disciplina').value, 10),
+    pupil_id: parseInt($('f-k-ucenec').value, 10),
+    time: cas,
+    date_recorded: $('f-k-datum').value || null,
+    notes: $('f-k-opombe').value.trim() || null
+  };
+  var zahteva = id
+    ? api('/records/' + id, 'PUT', pod)
+    : api('/records', 'POST', pod);
+  zahteva.then(function(){
+    toast(id ? 'Rekord posodobljen.' : 'Rekord dodan.', 'ok');
+    zapriModal(); natovoriRekorde(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiRekord(id){
+  if (!confirm('Ali res želite izbrisati ta rekord?')) return;
+  api('/records/' + id, 'DELETE').then(function(){
+    toast('Rekord izbrisan.', 'ok');
+    natovoriRekorde(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= ŠTARTNE LISTE ================= */
+function natovoriStartne(){
+  return api('/start-lists').then(function(seznami){
+    var vrstice = '';
+    for (var i = 0; i < seznami.length; i++){
+      var l = seznami[i];
+      vrstice += '<tr>' +
+        '<td>' + esc(l.discipline_name || '—') + '</td>' +
+        '<td>' + esc(l.grade) + '</td>' +
+        '<td>' + datumLepo(l.event_date) + '</td>' +
+        '<td style="text-align:right"><span class="povezava rdeca" onclick="izbrisiStartno(' + l.id + ')">🗑️ Izbriši</span></td></tr>';
+    }
+    $('tabela-startne').innerHTML = vrstice;
+    $('prazno-startne').style.display = seznami.length ? 'none' : 'block';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriModalStartna(){
+  Promise.all([natovoriUcence(), natovoriDiscipline()]).then(function(){
+    var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '">' + esc(d.name) + '</option>'; }).join('');
+    $('modal-vsebina').innerHTML =
+      '<h3>＋ Nova štartna lista</h3>' +
+      '<div class="polje"><label>Disciplina</label><select id="f-s-disciplina">' + opcijeD + '</select></div>' +
+      '<div class="polje"><label>Razred</label><select id="f-s-razred"><option value="2.r">2. razred</option><option value="3.r">3. razred</option></select></div>' +
+      '<div class="polje"><label>Datum</label><input id="f-s-datum" type="date"></div>' +
+      '<div class="polje"><label>Učenci (izberite vse, ki nastopajo)</label><div id="s-ucenci-izbira" style="max-height:220px;overflow-y:auto;border:2px solid #d5dde0;border-radius:9px;padding:10px;">' +
+        VSI_UCENCI.map(function(u){ return '<label style="display:block;padding:4px 0;font-weight:400;font-size:14px;cursor:pointer"><input type="checkbox" class="s-ucenec" value="' + u.id + '"> ' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</label>'; }).join('') +
+      '</div></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniStartno()">Ustvari listo</button>' +
+      '</div>';
+    odpriModal();
+  });
+}
+
+function shraniStartno(){
+  var datum = $('f-s-datum').value;
+  if (!datum){ toast('Izberite datum.', 'napaka'); return; }
+  var izbrani = [];
+  var potrdi = document.querySelectorAll('.s-ucenec:checked');
+  for (var i = 0; i < potrdi.length; i++) izbrani.push(parseInt(potrdi[i].value, 10));
+  if (!izbrani.length){ toast('Izberite vsaj enega učenca.', 'napaka'); return; }
+  var pod = {
+    discipline_id: parseInt($('f-s-disciplina').value, 10),
+    grade: $('f-s-razred').value,
+    event_date: datum + 'T08:00:00',
+    pupil_ids: izbrani
+  };
+  api('/start-lists', 'POST', pod).then(function(){
+    toast('Štartna lista ustvarjena.', 'ok');
+    zapriModal(); natovoriStartne();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiStartno(id){
+  if (!confirm('Ali res želite izbrisati to štartno listo?')) return;
+  api('/start-lists/' + id, 'DELETE').then(function(){
+    toast('Štartna lista izbrisana.', 'ok');
+    natovoriStartne();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= CSV / POŠTA / SMTP ================= */
+function prenesiPredlogoCsv(){
+  var vsebina = 'First Name,Last Name,School,Grade,Gender\nIme,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž)\n';
+  var blob = new Blob([vsebina], {type: 'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'predloga_ucenci.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Predloga pripravljena za prenos.', 'ok');
+}
+
+function odpriModalUvozCsv(){
+  $('modal-vsebina').innerHTML =
+    '<h3>📄 Uvoz učencev iz CSV</h3>' +
+    '<div class="info">Izberite izpolnjeno CSV datoteko, ki so jo vrnile šole. Stolpci: First Name, Last Name, School, Grade, Gender.</div>' +
+    '<div class="polje"><label>CSV datoteka</label><input id="f-csv" type="file" accept=".csv,text/csv"></div>' +
+    '<div class="modal-gumbi">' +
+      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+      '<button class="gumb gumb-zelen" onclick="uvoziCsv()">Uvozi</button>' +
+    '</div>';
+  odpriModal();
+}
+
+function uvoziCsv(){
+  var input = $('f-csv');
+  if (!input.files || !input.files[0]){ toast('Izberite CSV datoteko.', 'napaka'); return; }
+  var fd = new FormData();
+  fd.append('file', input.files[0]);
+  api('/import-csv', 'POST', fd).then(function(r){
+    var sp = r.status === 'error' ? 'napaka' : 'ok';
+    var besedilo = r.message || '';
+    if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
+    toast(besedilo, sp);
+    zapriModal();
+    natovoriUcence(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
+}
+
+function posljiVabila(){
+  if (!confirm('Ali želite poslati povabila s CSV predlogo vsem aktivnim šolam?')) return;
+  api('/send-emails', 'POST').then(function(r){
+    toast(r.message || 'Povabila poslana.', 'ok');
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function posljiRezultate(){
+  if (!confirm('Ali želite poslati rezultate vsem aktivnim šolam?')) return;
+  api('/send-results', 'POST').then(function(r){
+    toast(r.message || 'Rezultati poslani.', 'ok');
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriModalSmtp(){
+  $('modal-vsebina').innerHTML =
+    '<h3>⚙️ Nastavitve e-pošte (SMTP)</h3>' +
+    '<div class="info">Nastavitve za pošiljanje povabil in rezultatov prek Arnes e-pošte. Geslo se shrani samo na tem računalniku.</div>' +
+    '<div class="polje"><label>Strežnik (SMTP)</label><input id="f-smtp-host" value="smtp.arne.gov.si"></div>' +
+    '<div class="polje"><label>Vrata</label><input id="f-smtp-port" type="number" value="587"></div>' +
+    '<div class="polje"><label>Uporabniško ime (e-pošta)</label><input id="f-smtp-user"></div>' +
+    '<div class="polje"><label>Geslo</label><input id="f-smtp-pass" type="password"></div>' +
+    '<div class="modal-gumbi">' +
+      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+      '<button class="gumb gumb-zelen" onclick="shraniSmtp()">Shrani nastavitve</button>' +
+    '</div>';
+  odpriModal();
+}
+
+function shraniSmtp(){
+  var pod = {
+    host: $('f-smtp-host').value.trim(),
+    port: parseInt($('f-smtp-port').value, 10) || 587,
+    user: $('f-smtp-user').value.trim(),
+    password: $('f-smtp-pass').value
+  };
+  if (!pod.user || !pod.password){ toast('Vnesite uporabniško ime in geslo.', 'napaka'); return; }
+  api('/api/smtp', 'POST', pod).then(function(r){
+    toast(r.message || 'Nastavitve shranjene.', 'ok');
+    zapriModal();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= BRISANJE PODATKOV ================= */
+function pocistiPodatke(){
+  var odgovor = prompt('POZOR: To bo trajno izbrisalo VSE učence in VSE rezultate tekmovanja!\n\nZa potrditev vpišite: DA\n\n(Šole, discipline in rekordi ostanejo.)');
+  if (odgovor === null) return;
+  if (odgovor.trim().toUpperCase() !== 'DA'){ toast('Brisanje preklicano — vpisali niste DA.', 'napaka'); return; }
+  api('/delete-data/execute', 'POST').then(function(r){
+    toast(r.message || 'Podatki tekmovanja so počiščeni.', 'ok');
+    natovoriPregled(); natovoriUcence(); natovoriRezultate();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+/* ================= MODAL ================= */
+function odpriModal(){ $('modal-ozadje').classList.add('odprto'); }
+function zapriModal(){ $('modal-ozadje').classList.remove('odprto'); }
+$('modal-ozadje').addEventListener('click', function(e){ if (e.target === this) zapriModal(); });
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') zapriModal(); });
+
+/* ================= ZAGON ================= */
+natovoriPregled();
+natovoriSole();
+natovoriUcence();
+natovoriDiscipline();
+natovoriRezultate();
+natovoriRekorde();
+natovoriStartne();
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ Database setup and session management using SQLAlchemy.
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -26,18 +27,12 @@ def get_engine():
     in-memory connection."""
     global _engine
     if _engine is None:
-        from sqlalchemy.pool import StaticPool
-        path = app_config.sqlite_path or ":memory:"
-        if path == ":memory:":
-            _engine = create_engine(
-                "sqlite://",
-                connect_args={"check_same_thread": False},
-                poolclass=StaticPool,
-                echo=False,
-                future=True,
-            )
-        else:
-            _engine = create_engine(f"sqlite:///{path}", echo=False, future=True)
+        path = app_config.sqlite_path
+        if not path or path == ":memory:":
+            # Trajna baza: datoteka ob projektu (podatki ostanejo po zaprtju appa).
+            project_dir = Path(__file__).resolve().parent.parent
+            path = str(project_dir / "tekmovanja.db")
+        _engine = create_engine(f"sqlite:///{path}", echo=False, future=True)
     return _engine
 
 
@@ -49,11 +44,13 @@ def get_database_url() -> str:
 
 
 def init_db() -> None:
-    """Initialize database by creating tables from all models."""
+    """Initialize database by creating tables from all models.
+
+    Podatki se OHRANIJO med zagoni: create_all samo doda manjkajoče tabele,
+    nikoli ne briše obstoječih (drop_all je odstranjen namerno).
+    """
     from app.models import Base
     engine = get_engine()
-    # Drop all tables and create new ones
-    Base.metadata.drop_all(engine, checkfirst=True)
     Base.metadata.create_all(engine)
 
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 # Import from SQLAlchemy ORM
 try:
     from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, ForeignKey, UniqueConstraint
+    from sqlalchemy.orm import relationship
     from sqlalchemy.ext.declarative import declarative_base
 except ImportError:
     # Fallback for testing without SQLAlchemy
@@ -48,6 +49,8 @@ class Pupil(Base):
     gender = Column(String(2), nullable=False)  # 'M' or 'Ž'
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    school = relationship("School")
 
     def __repr__(self):
         return f"<Pupil {self.id}: {self.first_name} {self.last_name}, {self.grade} {self.gender}>"
@@ -101,6 +104,9 @@ class CompetitionEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    pupil = relationship("Pupil")
+    discipline = relationship("Discipline")
+
     def __repr__(self):
         return f"<Event {self.id}: pupil={self.pupil_id}, discipline={self.discipline_id}, time={self.time}s>"
 
@@ -118,6 +124,9 @@ class Record(Base):
     # Historical records never change; new ties get new records
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    pupil = relationship("Pupil")
+    discipline = relationship("Discipline")
+
     def __repr__(self):
         return f"<Record {self.id}: discipline={self.discipline_id}, pupil={self.pupil_id}, time={self.time}s>"
 
@@ -132,6 +141,8 @@ class StartList(Base):
     event_date = Column(DateTime, nullable=False)  # when the start list was created
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    discipline = relationship("Discipline")
 
     # Unique constraint: one start list per discipline+grade per date
     __table_args__ = (
