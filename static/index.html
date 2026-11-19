@@ -149,10 +149,26 @@
       <button class="gumb gumb-zelen" onclick="odpriModalDisciplina()">＋ Dodaj disciplino</button>
     </div>
     <table>
-      <thead><tr><th>Disciplina</th><th>Spol</th><th>Razredi</th><th></th></tr></thead>
+      <thead><tr><th>Disciplina</th><th>Razredi</th><th>Nastopi</th><th></th></tr></thead>
       <tbody id="tabela-discipline"></tbody>
     </table>
     <div class="prazno" id="prazno-discipline" style="display:none">Ni še nobene discipline.</div>
+
+    <!-- Podroben pogled nastopov izbrane discipline -->
+    <div id="dejavnost-podrobno" style="display:none;margin-top:18px;border-top:2px solid #d5dde0;padding-top:14px;">
+      <h3 id="dejavnost-naslov" style="margin-bottom:6px"></h3>
+      <div class="vrstica-gumbov">
+        <button class="gumb gumb-moder" onclick="natovoriDejavnost()">🔄 Osveži</button>
+        <a class="gumb gumb-orange" href="#" id="dejavnost-pdf" target="_blank">📄 Štartna lista PDF</a>
+        <button class="gumb gumb-siv" onclick="zapriDejavnost()">✕ Zapri pogled</button>
+      </div>
+      <h4 style="margin:14px 0 4px">Učenci na štartni listi (15)</h4>
+      <table>
+        <thead><tr><th>#</th><th>Učenec</th><th>Razred</th><th>Šola</th><th>Rezultat</th><th>Mesto</th></tr></thead>
+        <tbody id="tabela-dejavnost"></tbody>
+      </table>
+      <div class="prazno" id="prazno-dejavnost" style="display:none">Ni še nastopajočih.</div>
+    </div>
   </section>
 
   <!-- ============ REZULTATI ============ -->
@@ -500,16 +516,19 @@ function izbrisiUcenca(id){
 }
 
 /* ================= DISCIPLINE ================= */
+var TRENUTNA_DEJAVNOST = null;
+
 function natovoriDiscipline(){
   return api('/disciplines').then(function(disc){
     VSE_DISCIPLINE = disc;
     var vrstice = '';
     for (var i = 0; i < disc.length; i++){
       var d = disc[i];
+      var ikona = (d.name.indexOf('♂') !== -1) ? '♂' : (d.name.indexOf('♀') !== -1 ? '♀' : (d.gender === 'Ž' ? '♀' : '♂'));
       vrstice += '<tr>' +
-        '<td><strong>' + esc(d.name) + '</strong></td>' +
-        '<td>' + (d.gender === 'Ž' || d.gender === 'ž' ? '♀ Ženske' : '♂ Moški') + '</td>' +
+        '<td><strong>' + (ikona === '♂' ? '♂ ' : '♀ ') + esc(d.name.replace(/\s*[♂♀]$/, '')) + '</strong></td>' +
         '<td>' + esc(d.applicable_grades || '') + '</td>' +
+        '<td><span class="povezava" onclick="odpriDejavnost(' + d.id + ')">👥 Nastopi (' + (TRENUTNA_DEJAVNOST === d.id ? 'odprto' : '—') + ')</span></td>' +
         '<td style="text-align:right;white-space:nowrap">' +
           '<span class="povezava" onclick="odpriModalDisciplina(' + d.id + ')">✏️ Uredi</span>' +
           '<span class="povezava rdeca" onclick="izbrisiDisciplino(' + d.id + ')">🗑️ Odstrani</span>' +
@@ -517,6 +536,68 @@ function natovoriDiscipline(){
     }
     $('tabela-discipline').innerHTML = vrstice;
     $('prazno-discipline').style.display = disc.length ? 'none' : 'block';
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function odpriDejavnost(id){
+  TRENUTNA_DEJAVNOST = id;
+  var d = null;
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === id) d = VSE_DISCIPLINE[i];
+  if (!d){ toast('Disciplina ni najdena.', 'napaka'); return; }
+  $('dejavnost-naslov').innerHTML = '👥 Nastopi — ' + esc(d.name);
+  $('dejavnost-pdf').href = '/start-lists/' + id + '/pdf';
+  $('dejavnost-podrobno').style.display = 'block';
+  natovoriDejavnost();
+  document.getElementById('dejavnost-podrobno').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function zapriDejavnost(){
+  TRENUTNA_DEJAVNOST = null;
+  $('dejavnost-podrobno').style.display = 'none';
+  natovoriDiscipline();
+}
+
+function natovoriDejavnost(){
+  if (!TRENUTNA_DEJAVNOST) return;
+  var id = TRENUTNA_DEJAVNOST;
+  // Rezultati te discipline, združeni z učenci iz štartne liste (ali vsi enakega spola)
+  Promise.all([api('/events'), api('/start-lists'), api('/pupils')]).then(function(rez){
+    var dogodki = rez[0].filter(function(e){ return e.discipline_id === id; });
+    var liste = rez[1].filter(function(l){ return l.discipline_id === id; });
+    var ucenci = rez[2];
+    // Vrstni red: prvo učenci iz štartne liste te discipline, potem ostali
+    var vrstni_red = [];
+    var vidni = {};
+    liste.forEach(function(l){
+      (l.pupil_names || []).forEach(function(nm){ vrstni_red.push(nm); });
+    });
+    // Preslikaj dogodek → čas za učenca
+    var cas = {};
+    var mesto = {};
+    dogodki.forEach(function(e){
+      cas[e.pupil_id] = e.time;
+      mesto[e.pupil_id] = e.position;
+    });
+    var vrstice = '';
+    var st = 0;
+    ucenci.forEach(function(u){
+      var nm = u.first_name + ' ' + u.last_name;
+      // vključi če je v štartni listi ali ima rezultat
+      var jeNaListi = liste.some(function(l){ return (l.pupil_names || []).indexOf(nm) !== -1; });
+      if (!jeNaListi && cas[u.id] === undefined) return;
+      st++;
+      vrstice += '<tr>' +
+        '<td>' + st + '</td>' +
+        '<td>' + (u.gender === 'M' ? '♂ ' : '♀ ') + esc(nm) + '</td>' +
+        '<td>' + esc(u.grade) + '</td>' +
+        '<td>' + esc(u.school_name || '') + '</td>' +
+        '<td>' + (cas[u.id] !== undefined ? casLepo(cas[u.id]) : '—') + '</td>' +
+        '<td>' + (mesto[u.id] !== undefined ? mesto[u.id] + '.' : '—') + '</td>' +
+        '</tr>';
+    });
+    $('tabela-dejavnost').innerHTML = vrstice;
+    $('prazno-dejavnost').style.display = st ? 'none' : 'block';
+    if (!dogodki.length) toast('Za to disciplino še ni rezultatov prikazanih v pregledu.', '');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
@@ -531,13 +612,16 @@ function odpriModalDisciplina(id){
     });
   }
   promise.then(function(){
+    // Spol (♂/♀) je del imena — izločimo ga iz vnosnega polja, izbirnik pa postavi ikono.
+    var polozaj = disc ? disc.gender : 'M';
+    var ime_brez = disc ? String(disc.name).replace(/\s*[♂♀]$/, '') : '';
     $('modal-vsebina').innerHTML =
       '<h3>' + (jeUrejanje ? '✏️ Uredi disciplino' : '＋ Dodaj disciplino') + '</h3>' +
-      '<div class="polje"><label>Naziv discipline</label><input id="f-d-ime" value="' + esc(disc ? disc.name : '') + '" placeholder="npr. tek 60m M"></div>' +
-      '<div class="polje"><label>Spol</label><select id="f-d-spol">' +
-        '<option value="M"' + (disc && (disc.gender === 'M') ? ' selected' : '') + '>♂ Moški</option>' +
-        '<option value="Ž"' + (disc && (disc.gender === 'Ž' || disc.gender === 'ž') ? ' selected' : '') + '>♀ Ženske</option>' +
-      '</select></div>' +
+      '<div class="polje"><label>Naziv discipline</label><input id="f-d-ime" value="' + esc(ime_brez) + '" placeholder="npr. tek 60m"></div>' +
+      '<div class="polje"><label>Spol (doda se kot ikona ♂/♀)</label><div style="display:flex;gap:12px;margin-top:6px">' +
+        '<label class="radio"><input type="radio" name="f-d-spol" value="M"' + (polozaj === 'M' ? ' checked' : '') + '> <span style="font-size:20px">♂</span> Moški</label>' +
+        '<label class="radio"><input type="radio" name="f-d-spol" value="Ž"' + (polozaj === 'Ž' ? ' checked' : '') + '> <span style="font-size:20px">♀</span> Ženske</label>' +
+      '</div></div>' +
       '<div class="polje"><label>Razredi (ločeno z vejico)</label><input id="f-d-razredi" value="' + esc(disc ? disc.applicable_grades : '2.r,3.r') + '"></div>' +
       '<div class="modal-gumbi">' +
         '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -548,12 +632,16 @@ function odpriModalDisciplina(id){
 }
 
 function shraniDisciplino(id){
+  var spol = document.querySelector('input[name="f-d-spol"]:checked');
+  spol = spol ? spol.value : 'M';
+  var ime = $('f-d-ime').value.trim();
+  if (!ime){ toast('Vnesite naziv discipline.', 'napaka'); return; }
+  var ikona = spol === 'Ž' ? '♀' : '♂';
   var pod = {
-    name: $('f-d-ime').value.trim(),
-    gender: $('f-d-spol').value,
-    applicable_grades: $('f-d-razredi').value.trim()
+    name: ime + ' ' + ikona,
+    gender: spol,
+    applicable_grades: $('f-d-razredi').value.trim() || '2.r,3.r'
   };
-  if (!pod.name){ toast('Vnesite naziv discipline.', 'napaka'); return; }
   var zahteva = id
     ? api('/disciplines/' + id, 'PUT', pod)
     : api('/disciplines', 'POST', pod);

@@ -29,15 +29,16 @@ DEFAULT_CONFIG = {
         "OŠ 16. decembra Mojstrana": "mojstrana@arne.gov.si",
     },
     "disciplines": {
-        # Disciplines that start with these schools by default
-        "tek 60m M": ["2.r", "3.r"],
-        "tek 60m Ž": ["2.r", "3.r"],
-        "tek 400m M": ["2.r", "3.r"],
-        "tek 400m ž": ["2.r", "3.r"],
-        "skok v daljino M": ["2.r", "3.r"],
-        "skok v daljino Ž": ["2.r", "3.r"],
-        "met vorteksa M": ["2.r", "3.r"],
-        "met vorteksa Ž": ["2.r", "3.r"],
+        # Disciplines that start with these schools by default.
+        # Spol je v imenu kot ikona (♂/♀), ločeni stolpec Spol v tabeli ni več.
+        "tek 60m ♂": ["2.r", "3.r"],
+        "tek 60m ♀": ["2.r", "3.r"],
+        "tek 400m ♂": ["2.r", "3.r"],
+        "tek 400m ♀": ["2.r", "3.r"],
+        "skok v daljino ♂": ["2.r", "3.r"],
+        "skok v daljino ♀": ["2.r", "3.r"],
+        "met vorteksa ♂": ["2.r", "3.r"],
+        "met vorteksa ♀": ["2.r", "3.r"],
     },
 }
 

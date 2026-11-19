@@ -18,6 +18,7 @@ from app.models import (
     SchoolStatus, DisciplineType, GradeEnum
 )
 from app.settings import app_config
+from app.services import SchoolService, DisciplineService, PupilService, EventService, RecordService, StartListService
 
 # Initialize database
 init_db()
@@ -54,70 +55,119 @@ def _seed_defaults():
         db.commit()
 
         # --- Discipline (iz prvi_prompt.md / settings.py), idempotentno ---
-        obstojece_d = {d.name for d in db.query(Discipline).all()}
-        for ime, razredi in app_config.default_disciplines.items():
-            if ime not in obstojece_d:
-                spol = "Ž" if ime.strip().endswith(("Ž", "ž")) else "M"
-                db.add(Discipline(name=ime, gender=spol,
-                                  applicable_grades=",".join(razredi)))
+        # Če obstaja stara disciplina brez ikone (npr. "tek 60m M" / "tek 400m ž"),
+        # jo POSODOBIMO na novo ime z ikono (ohrani id + rezultate) namesto da
+        # ustvarimo novo in podvojimo discipline.
+        vse_disc = {d.name: d for d in db.query(Discipline).all()}
+        for novo_ime, razredi in app_config.default_disciplines.items():
+            if novo_ime in vse_disc:
+                continue  # že obstaja z ikono
+            cilj = vse_disc.get(novo_ime)
+            gender = "Ž" if novo_ime.rstrip().endswith("♀") else "M"
+            # poišči staro ime brez ikone (npr. "tek 60m M" ← "tek 60m ♂")
+            staro = None
+            if novo_ime.endswith("♂"):
+                staro = novo_ime[:-1].rstrip() + " M"
+                staro = staro.replace(" M", " M")
+            elif novo_ime.endswith("♀"):
+                staro = novo_ime[:-1].rstrip() + " Ž"
+            staro_alt = None
+            if novo_ime.endswith("♂"):
+                staro_alt = novo_ime[:-2].rstrip() + " M"
+            elif novo_ime.endswith("♀"):
+                staro_alt = novo_ime[:-2].rstrip() + " ž"
+            obstojec = vse_disc.get(staro) or vse_disc.get(staro_alt)
+            if obstojec:
+                obstojec.name = novo_ime
+                obstojec.gender = gender
+                obstojec.applicable_grades = ",".join(razredi)
+                vse_disc[novo_ime] = obstojec
+            else:
+                nova = Discipline(name=novo_ime, gender=gender,
+                                  applicable_grades=",".join(razredi))
+                db.add(nova)
+                vse_disc[novo_ime] = nova
         db.commit()
 
-        # --- Učenci in rekordi samo, če še ni nobenega učenca ---
+        # --- Učenci + rezultati + rekordi + štartne liste, samo če ni učencev ---
         if db.query(Pupil).count() == 0:
             sole = {s.name: s.id for s in db.query(School).all()}
             disc = {d.name: d.id for d in db.query(Discipline).all()}
 
-            vzorci = [
-                # (ime, priimek, šola, razred, spol)
-                ("Ana", "Novak", "OŠ Žirovnica", "2.r", "Ž"),
-                ("Luka", "Zupan", "OŠ Žirovnica", "3.r", "M"),
-                ("Maja", "Kovač", "OŠ Prežihov Voranc", "2.r", "Ž"),
-                ("Jan", "Horvat", "OŠ Prežihov Voranc", "3.r", "M"),
-                ("Eva", "Peršič", "OŠ Koroška Bela", "2.r", "Ž"),
-                ("Tim", "Rozman", "OŠ Koroška Bela", "3.r", "M"),
-                ("Nina", "Mlakar", "OŠ Josipa Vandota Kranjska Gora", "2.r", "Ž"),
-                ("Žan", "Jerina", "OŠ Josipa Vandota Kranjska Gora", "3.r", "M"),
-                ("Pia", "Šubic", "OŠ 16. decembra Mojstrana", "2.r", "Ž"),
-                ("Gal", "Mežnar", "OŠ 16. decembra Mojstrana", "3.r", "M"),
-            ]
-            ucenci = {}
-            for ime, priimek, sola, razred, spol in vzorci:
-                u = Pupil(first_name=ime, last_name=priimek,
-                          school_id=sole.get(sola), grade=razred, gender=spol)
-                db.add(u)
-                ucenci[(ime, priimek)] = u
-            db.commit()
+            # 30 učencev: 15 fantov (M) + 15 deklet (Ž), porazdeljenih po šolah
+            # in razredih — dovolj, da ima vsaka disciplina svojih 15 nastopov.
+            imena_m = ["Luka", "Jan", "Tim", "Žan", "Gal", "Miha", "Jakob", "Blaž",
+                       "Nejc", "Tilen", "Rok", "Matej", "David", "Filip", "Žiga"]
+            imena_z = ["Ana", "Maja", "Eva", "Nina", "Pia", "Lara", "Zala", "Nika",
+                       "Tjaša", "Klara", "Sara", "Ema", "Mia", "Lana", "Hana"]
+            priimki_m = ["Zupan", "Horvat", "Rozman", "Jerina", "Mežnar", "Krajnc",
+                         "Novak", "Vidmar", "Kovač", "Zajc", "Peršič", "Mlakar",
+                         "Šubic", "Golob", "Eržen"]
+            priimki_z = ["Novak", "Kovač", "Peršič", "Mlakar", "Šubic", "Zupan",
+                         "Horvat", "Krajnc", "Vidmar", "Zajc", "Rozman", "Jerina",
+                         "Golob", "Eržen", "Klemenčič"]
+            shole_lista = list(sole.values())
+            ucenci = []
 
-            # Vzorčni rezultati (events)
-            vzorci_rezultatov = [
-                ("Ana", "Novak", "tek 60m Ž", 10.45, 1, "Osebni rekord"),
-                ("Luka", "Zupan", "tek 60m M", 10.10, 2, None),
-                ("Maja", "Kovač", "tek 400m Ž", 72.30, 3, None),
-                ("Jan", "Horvat", "skok v daljino M", 3.85, 1, "Daljina v metrih"),
-                ("Eva", "Peršič", "met vorteksa Ž", 24.5, 2, None),
-            ]
-            for ime, priimek, disc_ime, cas, mesto, opombe in vzorci_rezultatov:
-                u = ucenci.get((ime, priimek))
-                if u and disc.get(disc_ime):
-                    db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc[disc_ime],
-                                            time=cas, position=mesto, notes=opombe))
-            db.commit()
+            def _dodaj_ucence(imena, priimki, spol, start_id):
+                out = []
+                for i in range(15):
+                    u = Pupil(
+                        first_name=imena[i],
+                        last_name=priimki[i],
+                        school_id=shole_lista[i % len(shole_lista)],
+                        grade=("2.r" if i % 2 == 0 else "3.r"),
+                        gender=spol,
+                    )
+                    db.add(u)
+                    out.append(u)
+                return out
 
-            # Vzorčni rekordi (best results)
-            vzorci_rekordov = [
-                ("Gal", "Mežnar", "tek 60m M", 9.85, "2026-05-18", "Rekord tekmovanja"),
-                ("Ana", "Novak", "tek 60m Ž", 10.20, "2026-05-18", None),
-                ("Jan", "Horvat", "skok v daljino M", 3.95, "2026-05-18", None),
-                ("Pia", "Šubic", "met vorteksa Ž", 26.1, "2026-05-18", None),
-                ("Maja", "Kovač", "tek 400m ž", 70.15, "2026-05-18", None),
-            ]
+            ucenci_m = _dodaj_ucence(imena_m, priimki_m, "M", 0)
+            ucenci_z = _dodaj_ucence(imena_z, priimki_z, "Ž", 0)
+            db.commit()
+            ucenci = ucenci_m + ucenci_z
+
+            # Za VSAKO disciplino: 15 učencev primernega spola dobi rezultat
+            # (CompetitionEvent) — imena disciplin so "tek 60m ♂", "tek 60m ♀", …
+            import random
+            rnd = random.Random(42)
             from datetime import datetime as _dt
-            for ime, priimek, disc_ime, cas, datum, opombe in vzorci_rekordov:
-                u = ucenci.get((ime, priimek))
-                if u and disc.get(disc_ime):
-                    db.add(Record(discipline_id=disc[disc_ime], pupil_id=u.id,
-                                  time=cas, date_recorded=_dt.strptime(datum, "%Y-%m-%d"),
-                                  notes=opombe))
+
+            for disc_ime, disc_id in disc.items():
+                je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
+                pool = ucenci_m if je_fant else ucenci_z
+                for mesto, u in enumerate(pool, start=1):
+                    if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
+                        cas = round(rnd.uniform(2.5, 5.5), 2)   # skok/met: metri/dolžina
+                    else:
+                        cas = round(rnd.uniform(9.0, 16.0), 2)   # teki: sekunde
+                    db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc_id,
+                                            time=cas, position=mesto))
+            db.commit()
+
+            # Rekordi: najboljši čas vsake discipline (najmanjši = zmagovalec)
+            for disc_ime, disc_id in disc.items():
+                je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
+                pool = ucenci_m if je_fant else ucenci_z
+                best = min(
+                    db.query(CompetitionEvent).filter(CompetitionEvent.discipline_id == disc_id).all(),
+                    key=lambda e: e.time,
+                )
+                db.add(Record(discipline_id=disc_id, pupil_id=best.pupil_id,
+                              time=best.time, date_recorded=_dt(2026, 5, 18),
+                              notes="Rekord tekmovanja"))
+            db.commit()
+
+            # Štartne liste: ena na disciplino — 15 učencev primernega spola
+            for disc_ime, disc_id in disc.items():
+                je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
+                pool = ucenci_m if je_fant else ucenci_z
+                sl = StartList(discipline_id=disc_id,
+                               grade="2.r",
+                               event_date=_dt(2026, 11, 28, 8, 0))
+                sl.pupils = pool
+                db.add(sl)
             db.commit()
     except Exception as e:
         db.rollback()
@@ -159,35 +209,8 @@ def add_school(
     email: str = Form(...),
     db=Depends(get_db)
 ):
-    """Add a new school."""
-    # Validate inputs
-    if not name or len(name.strip()) == 0:
-        raise HTTPException(status_code=400, detail="Name is required")
-    if not email or len(email.strip()) == 0:
-        raise HTTPException(status_code=400, detail="Email is required")
-    
-    # Check if school already exists
-    existing = db.query(School).filter((School.name == name), (School.email == email)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"School '{name}' with email '{email}' already exists")
-    
-    # Create school
-    school = School(
-        name=name.strip(),
-        email=email.strip(),
-        status=SchoolStatus.ACTIVE.value
-    )
-    db.add(school)
-    db.commit()
-    
-    return {
-        "id": school.id,
-        "name": school.name,
-        "email": school.email,
-        "status": school.status,
-        "created_at": school.created_at.isoformat(),
-        "updated_at": school.updated_at.isoformat(),
-    }
+    """Add a new school (prek SchoolService)."""
+    return SchoolService.create(db, name, email)
 
 @app.put("/schools/{school_id}", response_model=dict, summary="Update school")
 def update_school(
@@ -197,68 +220,30 @@ def update_school(
     status: Optional[str] = Form(None),
     db=Depends(get_db)
 ):
-    """Update school details."""
-    school = db.query(School).get(school_id)
-    if not school:
-        raise HTTPException(status_code=404, detail="School not found")
-    
-    if name:
-        school.name = name.strip()
-    if email:
-        school.email = email.strip()
-    if status:
-        if status not in (SchoolStatus.ACTIVE.value, SchoolStatus.INACTIVE.value):
-            raise HTTPException(status_code=400, detail="Status must be 'active' or 'inactive'")
-        school.status = status
-    
-    school.updated_at = datetime.utcnow()
-    db.commit()
-    
-    return {
-        "id": school.id,
-        "name": school.name,
-        "email": school.email,
-        "status": school.status,
-        "updated_at": school.updated_at.isoformat(),
-    }
+    """Update school details (prek SchoolService)."""
+    return SchoolService.update(db, school_id, name=name, email=email, status=status)
 
 @app.delete("/schools/{school_id}", response_model=dict, summary="Deactivate school")
 def deactivate_school(
     school_id: int,
     db=Depends(get_db)
 ):
-    """Deactivate a school (moves to inactive list). Does not delete data."""
-    school = db.query(School).get(school_id)
-    if not school:
-        raise HTTPException(status_code=404, detail="School not found")
-    
-    # Prevent deactivating the only school if it's the sender? Not required by spec
-    school.status = SchoolStatus.INACTIVE.value
-    school.updated_at = datetime.utcnow()
-    db.commit()
-    
-    return {"message": f"School '{school.name}' deactivated"}
+    """Deactivate a school (prek SchoolService). Does not delete data."""
+    return SchoolService.deactivate(db, school_id)
 
 @app.delete("/schools", response_model=dict, summary="Reactivate school (bulk reactivate)")
 def reactivate_all_inactive(
     db=Depends(get_db)
 ):
-    """Reactivate all inactive schools."""
-    inactive = db.query(School).filter(School.status == SchoolStatus.INACTIVE.value).all()
-    for school in inactive:
-        school.status = SchoolStatus.ACTIVE.value
-        school.updated_at = datetime.utcnow()
-    
-    db.commit()
-    return {"message": f"Reactivated {len(inactive)} inactive school(s)"}
+    """Reactivate all inactive schools (prek SchoolService)."""
+    return SchoolService.reactivate_all(db)
 
 # === DISCIPLINE MANAGEMENT ===
 
 @app.get("/disciplines", response_model=List[dict], summary="List disciplines")
 def list_disciplines(db=Depends(get_db)):
     """List all disciplines."""
-    disciplines = db.query(Discipline).all()
-    return [d.to_dict() for d in disciplines]
+    return DisciplineService.all(db)
 
 @app.post("/disciplines", response_model=dict, summary="Add discipline")
 def add_discipline(
@@ -267,45 +252,8 @@ def add_discipline(
     applicable_grades: Optional[str] = None,  # e.g., "2.r,3.r"
     db=Depends(get_db)
 ):
-    """Add a new discipline."""
-    if not name or len(name.strip()) == 0:
-        raise HTTPException(status_code=400, detail="Name is required")
-    
-    # Trim and validate
-    name = name.strip()
-    gender = gender.strip().upper()
-    
-    # Validate gender
-    if gender not in ("M", "Z", "Ž", "Z", "S"):  # Allow both cases and variations
-        # Normalize: M=M, Z/Ž=Z (but model uses gender col; we'll check later)
-        pass  # Model will handle validation
-    
-    if applicable_grades:
-        applicable_grades = applicable_grades.strip()
-    else:
-        applicable_grades = "2.r,3.r"
-    
-    # Check if discipline already exists
-    existing = db.query(Discipline).filter((Discipline.name == name)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"Discipline '{name}' already exists")
-    
-    discipline = Discipline(
-        name=name,
-        gender=gender.upper(),
-        applicable_grades=applicable_grades
-    )
-    db.add(discipline)
-    db.commit()
-    
-    return {
-        "id": discipline.id,
-        "name": discipline.name,
-        "gender": discipline.gender,
-        "applicable_grades": discipline.applicable_grades,
-        "created_at": discipline.created_at.isoformat(),
-        "updated_at": discipline.updated_at.isoformat(),
-    }
+    """Add a new discipline (prek DisciplineService)."""
+    return DisciplineService.create(db, name, gender, applicable_grades)
 
 @app.put("/disciplines/{discipline_id}", response_model=dict, summary="Update discipline")
 def update_discipline(
@@ -315,53 +263,17 @@ def update_discipline(
     applicable_grades: Optional[str] = Form(None),
     db=Depends(get_db)
 ):
-    """Update discipline details."""
-    discipline = db.query(Discipline).get(discipline_id)
-    if not discipline:
-        raise HTTPException(status_code=404, detail="Discipline not found")
-    
-    if name:
-        if name == discipline.name:
-            pass  # no change
-        else:
-            discipline.name = name.strip()
-    if gender:
-        gender = gender.strip().upper()
-        # Must be M or Z/Ž
-        if gender not in ("M", "Z", "Ž"):
-            raise HTTPException(status_code=400, detail="Gender must be M or Z/Ž")
-        discipline.gender = gender
-    if applicable_grades:
-        applicable_grades = applicable_grades.strip()  # optional; keep or use default
-    
-    discipline.updated_at = datetime.utcnow()
-    db.commit()
-    
-    return {
-        "id": discipline.id,
-        "name": discipline.name,
-        "gender": discipline.gender,
-        "applicable_grades": discipline.applicable_grades,
-        "updated_at": discipline.updated_at.isoformat(),
-    }
+    """Update discipline details (prek DisciplineService)."""
+    return DisciplineService.update(db, discipline_id, name=name, gender=gender,
+                                    applicable_grades=applicable_grades)
 
 @app.delete("/disciplines/{discipline_id}", response_model=dict, summary="Remove discipline (inactivate only)")
 def remove_discipline(
     discipline_id: int,
     db=Depends(get_db)
 ):
-    """Remove/inactivate a discipline. Does not delete historical results."""
-    discipline = db.query(Discipline).get(discipline_id)
-    if not discipline:
-        raise HTTPException(status_code=404, detail="Discipline not found")
-    
-    # Just deactivate by setting status? Model doesn't have status field.
-    # Instead, we can deactivate by filtering; but prompt says "let user add and remove disciplines"
-    # and "removing one must not delete its historical results"
-    # We'll just exclude from auto assignments; no field needed
-    # Return success message
-    db.commit()
-    return {"message": f"Discipline '{discipline.name}' marked for removal"}
+    """Remove a discipline (prek DisciplineService). Does not delete historical results."""
+    return DisciplineService.remove(db, discipline_id)
 
 # === PUPIL MANAGEMENT ===
 
@@ -446,58 +358,13 @@ def record_event(
     notes: Optional[str] = None,
     db=Depends(get_db)
 ):
-    """Record a single event result."""
-    # Validate inputs
-    if time is None or position is None:
-        raise HTTPException(status_code=400, detail="Time and position are required")
-    
-    if not isinstance(time, (int, float)) or time < 0:
-        raise HTTPException(status_code=400, detail="Time must be a positive number")
-    
-    if not 1 <= position <= 30:  # reasonable max for primary school
-        raise HTTPException(status_code=400, detail="Position must be between 1 and 30")
-    
-    # Get pupil and discipline
-    pupil = db.query(Pupil).get(pupil_id)
-    discipline = db.query(Discipline).get(discipline_id)
-    if not pupil or not discipline:
-        raise HTTPException(status_code=404, detail="Pupil or discipline not found")
-    
-    # Check applicability: discipline must be applicable for pupil's grade
-    if discipline.applicable_grades and pupil.grade not in discipline.applicable_grades.split(","):
-        # Check if grade appears in applicable list
-        applicable = [g.strip() for g in discipline.applicable_grades.split(",")]
-        if pupil.grade not in applicable:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Discipline '{discipline.name}' is not applicable for grade {pupil.grade}"
-            )
-    
-    event = CompetitionEvent(
-        pupil_id=pupil_id,
-        discipline_id=discipline_id,
-        time=float(time),
-        position=position,
-        notes=notes.strip() if notes else None,
-    )
-    db.add(event)
-    db.commit()
-    
-    return {
-        "id": event.id,
-        "pupil_id": event.pupil_id,
-        "discipline_id": event.discipline_id,
-        "time": event.time,
-        "position": event.position,
-        "notes": event.notes,
-        "created_at": event.created_at.isoformat(),
-    }
+    """Record a single event result (prek EventService)."""
+    return EventService.create(db, pupil_id, discipline_id, time, position, notes)
 
 @app.get("/events", response_model=List[dict], summary="List events")
 def list_events(db=Depends(get_db)):
     """List all events."""
-    events = db.query(CompetitionEvent).all()
-    return [e.to_dict() for e in events]
+    return EventService.all(db)
 
 # === RECORD MANAGEMENT ===
 
@@ -1174,66 +1041,21 @@ def update_pupil(
     gender: Optional[str] = Form(None),
     db=Depends(get_db)
 ):
-    """Update pupil details."""
-    pupil = db.query(Pupil).get(pupil_id)
-    if not pupil:
-        raise HTTPException(status_code=404, detail="Pupil not found")
-
-    if first_name is not None and first_name.strip():
-        pupil.first_name = first_name.strip()
-    if last_name is not None and last_name.strip():
-        pupil.last_name = last_name.strip()
-    if school_id is not None:
-        school = db.query(School).get(school_id)
-        if not school:
-            raise HTTPException(status_code=404, detail="School not found")
-        pupil.school_id = school_id
-    if grade is not None and grade.strip():
-        grade = grade.strip()
-        if grade not in ("2.r", "3.r"):
-            raise HTTPException(status_code=400, detail="Grade must be 2.r or 3.r")
-        pupil.grade = grade
-    if gender is not None and gender.strip():
-        gender = gender.strip().upper()
-        if gender not in ("M", "Ž"):
-            raise HTTPException(status_code=400, detail="Gender must be M or Ž")
-        pupil.gender = gender
-
-    pupil.updated_at = datetime.utcnow()
-    db.commit()
-    return {
-        "id": pupil.id,
-        "first_name": pupil.first_name,
-        "last_name": pupil.last_name,
-        "school_id": pupil.school_id,
-        "grade": pupil.grade,
-        "gender": pupil.gender,
-    }
+    """Update pupil details (prek PupilService)."""
+    return PupilService.update(db, pupil_id, first_name=first_name, last_name=last_name,
+                               school_id=school_id, grade=grade, gender=gender)
 
 
 @app.delete("/pupils/{pupil_id}", response_model=dict, summary="Delete pupil")
 def delete_pupil(pupil_id: int, db=Depends(get_db)):
-    """Delete a pupil and their competition events and records."""
-    pupil = db.query(Pupil).get(pupil_id)
-    if not pupil:
-        raise HTTPException(status_code=404, detail="Pupil not found")
-
-    db.query(CompetitionEvent).filter(CompetitionEvent.pupil_id == pupil_id).delete()
-    db.query(Record).filter(Record.pupil_id == pupil_id).delete()
-    db.delete(pupil)
-    db.commit()
-    return {"message": f"Pupil {pupil.first_name} {pupil.last_name} deleted"}
+    """Delete a pupil and their events/records (prek PupilService)."""
+    return PupilService.delete(db, pupil_id)
 
 
 @app.delete("/events/{event_id}", response_model=dict, summary="Delete event/result")
 def delete_event(event_id: int, db=Depends(get_db)):
-    """Delete a single competition event (result)."""
-    event = db.query(CompetitionEvent).get(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    db.delete(event)
-    db.commit()
-    return {"message": f"Event {event_id} deleted"}
+    """Delete a single competition event (result) — prek EventService."""
+    return EventService.delete(db, event_id)
 
 
 @app.put("/events/{event_id}", response_model=dict, summary="Update event/result")
@@ -1245,29 +1067,9 @@ def update_event(
     discipline_id: Optional[int] = Form(None),
     db=Depends(get_db)
 ):
-    """Update a competition event (result)."""
-    event = db.query(CompetitionEvent).get(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    if time is not None:
-        if time < 0:
-            raise HTTPException(status_code=400, detail="Time must be positive")
-        event.time = float(time)
-    if position is not None:
-        if not 1 <= position <= 30:
-            raise HTTPException(status_code=400, detail="Position must be between 1 and 30")
-        event.position = position
-    if notes is not None:
-        event.notes = notes.strip() if notes.strip() else None
-    if discipline_id is not None:
-        disc = db.query(Discipline).get(discipline_id)
-        if not disc:
-            raise HTTPException(status_code=404, detail="Discipline not found")
-        event.discipline_id = discipline_id
-    event.updated_at = datetime.utcnow()
-    db.commit()
-    return {"message": f"Event {event_id} updated", "id": event.id,
-            "time": event.time, "position": event.position}
+    """Update a competition event (result) — prek EventService."""
+    return EventService.update(db, event_id, time=time, position=position,
+                               notes=notes, discipline_id=discipline_id)
 
 
 @app.post("/records", response_model=dict, summary="Add record manually")
@@ -1323,46 +1125,15 @@ def update_record(
     pupil_id: Optional[int] = Form(None),
     db=Depends(get_db)
 ):
-    """Update a record (best result)."""
-    record = db.query(Record).get(record_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
-    if time is not None:
-        if time < 0:
-            raise HTTPException(status_code=400, detail="Time must be positive")
-        record.time = float(time)
-    if date_recorded is not None:
-        try:
-            record.date_recorded = datetime.strptime(date_recorded, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date, use YYYY-MM-DD")
-    if notes is not None:
-        record.notes = notes.strip() if notes.strip() else None
-    if discipline_id is not None:
-        disc = db.query(Discipline).get(discipline_id)
-        if not disc:
-            raise HTTPException(status_code=404, detail="Discipline not found")
-        record.discipline_id = discipline_id
-    if pupil_id is not None:
-        pupil = db.query(Pupil).get(pupil_id)
-        if not pupil:
-            raise HTTPException(status_code=404, detail="Pupil not found")
-        record.pupil_id = pupil_id
-    db.commit()
-    return {"message": f"Record {record_id} updated", "id": record.id,
-            "time": record.time, "discipline_id": record.discipline_id,
-            "pupil_id": record.pupil_id}
+    """Update a record (best result) — prek RecordService."""
+    return RecordService.update(db, record_id, time=time, date_recorded=date_recorded,
+                                notes=notes, discipline_id=discipline_id, pupil_id=pupil_id)
 
 
 @app.delete("/records/{record_id}", response_model=dict, summary="Delete record")
 def delete_record(record_id: int, db=Depends(get_db)):
-    """Delete a record (best result)."""
-    record = db.query(Record).get(record_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
-    db.delete(record)
-    db.commit()
-    return {"message": f"Record {record_id} deleted"}
+    """Delete a record (best result) — prek RecordService."""
+    return RecordService.delete(db, record_id)
 
 
 @app.post("/api/smtp", response_model=dict, summary="Save SMTP settings")
@@ -1401,13 +1172,8 @@ def start_list_pdf(start_list_id: int, db=Depends(get_db)):
 
 @app.delete("/start-lists/{start_list_id}", response_model=dict, summary="Delete start list")
 def delete_start_list(start_list_id: int, db=Depends(get_db)):
-    """Delete a start list."""
-    start_list = db.query(StartList).get(start_list_id)
-    if not start_list:
-        raise HTTPException(status_code=404, detail="Start list not found")
-    db.delete(start_list)
-    db.commit()
-    return {"message": f"Start list {start_list_id} deleted"}
+    """Delete a start list (prek StartListService)."""
+    return StartListService.delete(db, start_list_id)
 
 
 @app.get("/best-results", response_model=List[dict], summary="Best results per discipline+grade")
