@@ -176,12 +176,21 @@
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalRekord()">＋ Dodaj rekord</button>
       <button class="gumb gumb-moder" onclick="natovoriRekorde()">🔄 Osveži</button>
+      <button class="gumb gumb-orange" onclick="natovoriBestResults()">🏆 Najboljši po disciplinah</button>
     </div>
     <table>
       <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Čas / dolžina</th><th>Datum</th><th>Opombe</th><th></th></tr></thead>
       <tbody id="tabela-rekordi"></tbody>
     </table>
     <div class="prazno" id="prazno-rekordi" style="display:none">Ni še zabeleženih rekordov.</div>
+
+    <h3 style="margin-top:28px" id="naslov-best">🏆 Najboljši rezultati po disciplinah in razredih</h3>
+    <p class="opis">Za vsako disciplino in razred najboljši čas; ob izenačenju so vsi najboljši v isti vrstici.</p>
+    <table id="tabela-best" style="display:none">
+      <thead><tr><th>Disciplina</th><th>Razred</th><th>Čas / dolžina</th><th>Učenci</th></tr></thead>
+      <tbody id="tabela-best-body"></tbody>
+    </table>
+    <div class="prazno" id="prazno-best" style="display:none">Ni še najboljših rezultatov.</div>
   </section>
 
   <!-- ============ ŠTARTNE LISTE ============ -->
@@ -860,6 +869,26 @@ function pocistiPodatke(){
   api('/delete-data/execute', 'POST').then(function(r){
     toast(r.message || 'Podatki tekmovanja so počiščeni.', 'ok');
     natovoriPregled(); natovoriUcence(); natovoriRezultate();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function natovoriBestResults(){
+  api('/best-results').then(function(rez){
+    var vrstice = '';
+    for (var i = 0; i < rez.length; i++){
+      var r = rez[i];
+      vrstice += '<tr>' +
+        '<td><strong>' + esc(r.discipline_name) + '</strong></td>' +
+        '<td>' + esc(r.grade) + '</td>' +
+        '<td><strong>' + casLepo(r.time) + '</strong></td>' +
+        '<td>' + esc(r.pupils.join(', ')) + '</td>' +
+        '</tr>';
+    }
+    $('tabela-best-body').innerHTML = vrstice;
+    $('tabela-best').style.display = rez.length ? 'table' : 'none';
+    $('prazno-best').style.display = rez.length ? 'none' : 'block';
+    $('naslov-best').style.display = 'block';
+    if (rez.length) toast('Prikazanih ' + rez.length + ' najboljših rezultatov.', 'ok');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 

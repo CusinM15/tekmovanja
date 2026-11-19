@@ -1529,6 +1529,41 @@ def delete_start_list(start_list_id: int, db=Depends(get_db)):
     return {"message": f"Start list {start_list_id} deleted"}
 
 
+@app.get("/best-results", response_model=List[dict], summary="Best results per discipline+grade")
+def best_results(db=Depends(get_db)):
+    """Najboljši rezultati, združeni po disciplini IN razredu.
+
+    Za vsako disciplino+razred ena vrstica z najboljšim časom; če imata dva ali
+    več učencev enak najboljši čas, so vsi v isti vrstici.
+    """
+    records = db.query(Record).all()
+    # Grupiraj po (discipline_id, pupil.grade)
+    groups = {}
+    for r in records:
+        if not r.pupil or not r.discipline:
+            continue
+        key = (r.discipline_id, r.pupil.grade)
+        groups.setdefault(key, []).append(r)
+
+    out = []
+    for (disc_id, grade), recs in groups.items():
+        best_time = min(r.time for r in recs)
+        best = [r for r in recs if abs(r.time - best_time) < 0.001]
+        discipline = recs[0].discipline
+        out.append({
+            "discipline_id": disc_id,
+            "discipline_name": discipline.name if discipline else "—",
+            "grade": grade,
+            "time": best_time,
+            "pupils": [f"{r.pupil.first_name} {r.pupil.last_name}" for r in best],
+            "record_ids": [r.id for r in best],
+        })
+
+    # Uredi po disciplini, nato razredu
+    out.sort(key=lambda x: (x["discipline_name"], x["grade"]))
+    return out
+
+
 # === HEALTH CHECK ===
 
 @app.get("/health")
