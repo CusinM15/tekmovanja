@@ -1,0 +1,14 @@
+services:
+  tekmovanja:
+    build: .
+    container_name: tekmovanja
+    ports:
+      - "8000:8000"
+    volumes:
+      - tekmovanja_data:/app/data
+    environment:
+      - TEKMOVANJA_DATA_DIR=/app/data
+    restart: unless-stopped
+
+volumes:
+  tekmovanja_data:

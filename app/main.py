@@ -32,6 +32,95 @@ app = FastAPI(
 def get_db(session_locator=get_session):
     return session_locator()
 
+
+def _seed_defaults():
+    """Ob prvem zagonu (prazna baza) napolni šole, discipline, učence in rekorde,
+    da lahko uporabnik takoj preizkusi app. Če tabela že ima podatke, se ne dotika."""
+    from app.models import School, Discipline, Pupil, CompetitionEvent, Record, SchoolStatus
+
+    db = get_db()
+    try:
+        # --- Šole (iz prvi_prompt.md / settings.py) ---
+        if db.query(School).count() == 0:
+            for ime, email in app_config.default_schools.items():
+                db.add(School(name=ime, email=email, status=SchoolStatus.ACTIVE.value))
+            db.commit()
+
+        # --- Discipline (iz prvi_prompt.md / settings.py) ---
+        if db.query(Discipline).count() == 0:
+            for ime, razredi in app_config.default_disciplines.items():
+                spol = "Ž" if ime.strip().endswith(("Ž", "ž")) else "M"
+                db.add(Discipline(name=ime, gender=spol,
+                                  applicable_grades=",".join(razredi)))
+            db.commit()
+
+        # --- Učenci in rekordi samo, če so šole+discipline obstajale in ni učencev ---
+        if db.query(Pupil).count() == 0 and db.query(School).count() > 0 and db.query(Discipline).count() > 0:
+            sole = {s.name: s.id for s in db.query(School).all()}
+            disc = {d.name: d.id for d in db.query(Discipline).all()}
+
+            vzorci = [
+                # (ime, priimek, šola, razred, spol)
+                ("Ana", "Novak", "OŠ Žirovnica", "2.r", "Ž"),
+                ("Luka", "Zupan", "OŠ Žirovnica", "3.r", "M"),
+                ("Maja", "Kovač", "OŠ Prežihov Voranc", "2.r", "Ž"),
+                ("Jan", "Horvat", "OŠ Prežihov Voranc", "3.r", "M"),
+                ("Eva", "Peršič", "OŠ Koroška Bela", "2.r", "Ž"),
+                ("Tim", "Rozman", "OŠ Koroška Bela", "3.r", "M"),
+                ("Nina", "Mlakar", "OŠ Josipa Vandota Kranjska Gora", "2.r", "Ž"),
+                ("Žan", "Jerina", "OŠ Josipa Vandota Kranjska Gora", "3.r", "M"),
+                ("Pia", "Šubic", "OŠ 16. decembra Mojstrana", "2.r", "Ž"),
+                ("Gal", "Mežnar", "OŠ 16. decembra Mojstrana", "3.r", "M"),
+            ]
+            ucenci = {}
+            for ime, priimek, sola, razred, spol in vzorci:
+                u = Pupil(first_name=ime, last_name=priimek,
+                          school_id=sole.get(sola), grade=razred, gender=spol)
+                db.add(u)
+                ucenci[(ime, priimek)] = u
+            db.commit()
+
+            # Vzorčni rezultati (events)
+            vzorci_rezultatov = [
+                ("Ana", "Novak", "tek 60m Ž", 10.45, 1, "Osebni rekord"),
+                ("Luka", "Zupan", "tek 60m M", 10.10, 2, None),
+                ("Maja", "Kovač", "tek 400m Ž", 72.30, 3, None),
+                ("Jan", "Horvat", "skok v daljino M", 3.85, 1, "Daljina v metrih"),
+                ("Eva", "Peršič", "met vorteksa Ž", 24.5, 2, None),
+            ]
+            for ime, priimek, disc_ime, cas, mesto, opombe in vzorci_rezultatov:
+                u = ucenci.get((ime, priimek))
+                if u and disc.get(disc_ime):
+                    db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc[disc_ime],
+                                            time=cas, position=mesto, notes=opombe))
+            db.commit()
+
+            # Vzorčni rekordi (best results)
+            vzorci_rekordov = [
+                ("Gal", "Mežnar", "tek 60m M", 9.85, "2026-05-18", "Rekord tekmovanja"),
+                ("Ana", "Novak", "tek 60m Ž", 10.20, "2026-05-18", None),
+                ("Jan", "Horvat", "skok v daljino M", 3.95, "2026-05-18", None),
+                ("Pia", "Šubic", "met vorteksa Ž", 26.1, "2026-05-18", None),
+                ("Maja", "Kovač", "tek 400m ž", 70.15, "2026-05-18", None),
+            ]
+            from datetime import datetime as _dt
+            for ime, priimek, disc_ime, cas, datum, opombe in vzorci_rekordov:
+                u = ucenci.get((ime, priimek))
+                if u and disc.get(disc_ime):
+                    db.add(Record(discipline_id=disc[disc_ime], pupil_id=u.id,
+                                  time=cas, date_recorded=_dt.strptime(datum, "%Y-%m-%d"),
+                                  notes=opombe))
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Seed opozorilo (ni usodno): {e}")
+    finally:
+        db.close()
+
+
+# Po inicializaciji baze napolni privzete podatke (samo ob prvem zagonu)
+_seed_defaults()
+
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 @app.get("/", summary="Home", include_in_schema=False)

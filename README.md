@@ -1,128 +1,141 @@
 # Tekmovanja — upravljalec šolskega atletskega tekmovanja
 
 Lokalna spletna aplikacija (FastAPI + SQLite) za vodenje šolskega atletskega
-tekmovanja: šole, discipline, učenci, prireditve, rezultati, rekordi,
+tekmovanja: šole, discipline, učenci, rezultati, rekordi, štartne liste,
 pošiljanje e-pošte in uvoz CSV.
 
 Aplikacija teče **lokalno v vašem računalniku** in jo odprete v brskalniku —
 nič se ne pošilja na internet. Internet potrebujete samo, če želite pošiljati
 e-pošto šolam (SMTP).
 
----
-
-## 1. Predpogoji
-
-- **Python 3.13** (novejše 3.x večinoma delujejo).
-- V mapi projekta je že pripravljeno okolje `venv/` (vsi paketi so v njem).
-  Če `venv/` ne obstaja, si ga ustvarite po navodilu v razdelku 3.
-
-Preverite, da imate Python:
-
-```
-python --version
-```
-
-> Priporočljivo: na Windows v ukazni vrstici uporabite `py` namesto `python`,
-> če `python` ne deluje: `py --version`.
+Vmesnik je preprost in namenjen tudi uporabnikom, ki niso vešči računalnika:
+vse poteka s kliki, brez ukazne vrstice.
 
 ---
 
-## 2. Zagon aplikacije
+## 1. Zagon z Dockerjem (najlažje)
 
-Odprite ukazno vrstico/terminal in pojdite v mapo projekta:
+Potrebujete samo nameščen **Docker** (in Docker Compose).
 
-```
-cd pot/do/mape/tekmovanja
-```
-
-Zaženite aplikacijo:
-
-```
-venv\Scripts\python run.py        (Windows)
+```bash
+docker compose up -d --build
 ```
 
-ali
+Nato v brskalniku odprite: **http://127.0.0.1:8000/**
 
+Ustavitev:
+
+```bash
+docker compose down
 ```
-./venv/bin/python run.py          (Linux / macOS)
+
+Podatki so shranjeni v Docker volumnu `tekmovanja_data` in ostanejo tudi po
+ustavitvi/ponovnem zagonu. Če želite začeti povsem od začetka:
+
+```bash
+docker compose down -v
 ```
 
-Po nekaj sekundah vidite izpis, da strežnik teče na
-`http://127.0.0.1:8000`. Pritisnite Ctrl+C za ustavitev.
+Brez Docker Compose lahko uporabite kar `docker run`:
 
-Odprite v brskalniku:
-
-| Naslov | Kaj je tam |
-|---|---|
-| `http://127.0.0.1:8000/` | Osnovna stran (JSON sporočilo) |
-| `http://127.0.0.1:8000/docs` | **Interaktivna dokumentacija (Swagger UI)** — tukaj preizkusite vse funkcije s klikom |
-| `http://127.0.0.1:8000/health` | Preverba, da je aplikacija živa (`{"status":"healthy"}`) |
-
-V `…/docs` lahko vsak konec (API) odprete, kliknete **Try it out**, vnesete
-podatke in sprožite klic — brez programiranja.
+```bash
+docker build -t tekmovanja .
+docker run -d --name tekmovanja -p 8000:8000 \
+  -e TEKMOVANJA_DATA_DIR=/app/data \
+  -v tekmovanja_data:/app/data \
+  tekmovanja
+```
 
 ---
 
-## 3. Ustvarjanje okolja od začetka (če `venv/` manjka)
+## 2. Zagon brez Dockerja (lokalno, za razvoj)
 
-```
+### Predpogoji
+
+- **Python 3.10+** (testirano na 3.12/3.13)
+
+### Ustvarjanje okolja in zagon
+
+```bash
 python -m venv venv
-venv\Scripts\pip install -r requirements.txt      (Windows)
-./venv/bin/pip install -r requirements.txt         (Linux / macOS)
+venv\Scripts\pip install -r requirements.txt     # Windows
+./venv/bin/pip install -r requirements.txt        # Linux / macOS
+
+venv\Scripts\python run.py                        # Windows
+./venv/bin/python run.py                          # Linux / macOS
 ```
 
----
-
-## 4. Glavne funkcije (vsa navodila po korakih veljajo za `…/docs`)
-
-- **Šole** — `POST /schools` dodaja šolo, `GET /schools` jih izpiše,
-  `DELETE /schools/{id}` jo deaktivira (zgodovina ostane), `DELETE /schools`
-  jih vse ponovno aktivira.
-- **Discipline** — `POST /disciplines` (npr. `tek 60m M`, `met vorteksa Ž`),
-  `GET /disciplines`, `PUT /disciplines/{id}`.
-- **Učenci** — `POST /pupils` (ime, šola, razred 2.r ali 3.r, spol),
-  `GET /pupils`.
-- **Rezultati in rekordi** — `POST /events` vnese rezultat,
-  `POST /records` izračuna/oživlja rekorde (pri izenačenju se rekord obdrži
-  kot dodaten), `GET /records` prikaže najboljše rezultate.
-- **Štartne liste** — `POST /start-lists` ustvari štartno listo za
-  disciplino in razred; `GET /start-lists` jih izpiše.
-- **E-pošta** — `POST /send-emails` pošlje vabila s prazno CSV predlogo vsem
-  aktivnim šolam; `POST /send-results` pošlje rezultate. (Zahteva nastavitev
-  SMTP — glej razdelek 5.)
-- **Uvoz CSV** — `POST /import-csv` uvozi izpolnjene datoteke, preverja
-  podatke in preprečuje podvojene vnose.
-- **Izpis rezultatov** — `GET /results-pdf` vrne pregled rezultatov.
-- **Brisanje podatkov** — `GET /delete-data` pokaže, kaj bi se izbrisalo,
-  `POST /delete-data/execute` podatke tekmovanja dejansko izbriše
-  (šole, discipline in rekordi ostanejo).
+Po nekaj sekundah odprite v brskalniku: **http://127.0.0.1:8000/**
 
 ---
 
-## 5. Nastavitev e-pošte (SMTP)
+## 3. Kako uporabljati (vmesnik)
 
-Vso konfiguracijo najdete v `app/settings.py` (zavihek `smtp`):
+Vse je v enem oknu z zavihki:
 
-- `host` — npr. `smtp.arne.gov.si` (Arnes)
-- `port` — 587
-- `user` / `password` — vaš poštni račun (privzeto je `None`; gesla **nikoli**
-  ne shranjujte v spremembe kode/git — vpišite jih samo v nastavitve na
-  lokalnem računalniku).
+| Zavihek | Kaj počne |
+|---|---|
+| 📊 Pregled | Števci: šole, učenci, discipline, rezultati, rekordi |
+| 🏫 Šole | Dodajanje, urejanje, odstranjevanje šol |
+| 👦 Učenci | Dodajanje, urejanje, brisanje, iskanje, uvoz CSV |
+| 🏃 Discipline | Dodajanje, urejanje, odstranjevanje disciplin |
+| ⏱️ Rezultati | Vnos, urejanje in brisanje rezultatov tekmovanja |
+| 🥇 Rekordi | Dodajanje, urejanje in brisanje najboljših rezultatov |
+| 📋 Štartne liste | Ustvarjanje štartnih list (disciplina, razred, datum, učenci) |
+| 🗄️ Uvoz in pošta | CSV predloga, uvoz, pošiljanje povabil/rezultatov, SMTP, brisanje podatkov |
 
-`app/settings.py` vsebuje tudi privzeti seznam šol in disciplin, ki se
-ustvarijo ob zagonu.
+### Ob prvem zagonu
+
+Baza se samodejno napolni z:
+
+- **5 šolami** (OŠ Žirovnica, OŠ Prežihov Voranc, OŠ Koroška Bela,
+  OŠ Josipa Vandota Kranjska Gora, OŠ 16. decembra Mojstrana),
+- **8 disciplinami** (tek 60m, tek 400m, skok v daljino, met vorteksa — za fante in punce),
+- **10 vzorčnimi učenci**, nekaj rezultati in rekordi — da lahko takoj preizkusite app.
+
+Če želite začeti s prazno bazo, izbrišite datoteko `tekmovanja.db`
+(oz. `docker compose down -v`) in znova zaženite.
+
+### Brisanje podatkov tekmovanja
+
+Gumb **🗑️ Počisti podatke tekmovanja** (zavihek *Uvoz in pošta*) trajno
+izbriše učence in rezultate tekmovanja. **Šole, discipline in rekordi
+(najboljši rezultati) ostanejo.** Za potrditev je treba vpisati `DA`.
 
 ---
 
-## 6. Pomembno: kje so podatki
+## 4. Kje so podatki
 
-**Podatki so trenutno v pomnilniku (in-memory SQLite).** Ob vsakem
-ponovnem zagonu aplikacije se podatki izpraznijo in začnete znova
-(privzete šole/discipline pa se spet ustvarijo iz `settings.py`).
+- **Docker:** v volumnu `tekmovanja_data` (SQLite datoteka `tekmovanja.db`).
+- **Lokalno:** v mapi projekta kot `tekmovanja.db` (gitignorano).
+- Nastavitve SMTP (če jih shranite v vmesniku) so v `config.json` zunaj
+  mape projekta — **gesla se nikoli ne shranjujejo v git**.
 
-Če želite trajno bazo, nastavite `sqlite_path` v `app/settings.py`
-(npr. `"tekmovanja.db"`) — datoteka nastane v mapi projekta.
-Datoteke `*.db` so zavestno izključene iz gita (`.gitignore`).
+---
+
+## 5. Pošiljanje e-pošte (SMTP, neobvezno)
+
+V zavihku **Uvoz in pošta → ⚙️ Nastavitve e-pošte** vnesite svoj Arnes
+poštni račun:
+
+- strežnik: `smtp.arne.gov.si`
+- vrata: `587`
+- uporabniško ime: vaša šolska e-pošta
+- geslo
+
+Nato lahko s klikom pošljete **povabila s CSV predlogo** vsem aktivnim šolam
+in po koncu tekmovanja še **rezultate**.
+
+---
+
+## 6. Uvoz učencev iz CSV
+
+1. V zavihku *Uvoz in pošta* kliknite **📥 Prenesi prazno predlogo (CSV)**.
+2. Predlogo pošljete šolam; one jo izpolnijo in vrnejo.
+3. Izpolnjeno datoteko uvozite z **📄 Uvozi izpolnjeno CSV**.
+
+Stolpci: `First Name, Last Name, School, Grade, Gender`
+(razred: `2.r` ali `3.r`, spol: `M` ali `Ž`).
 
 ---
 
@@ -130,25 +143,22 @@ Datoteke `*.db` so zavestno izključene iz gita (`.gitignore`).
 
 | Težava | Rešitev |
 |---|---|
-| `Errno 98: Address already in use` | Vrata 8000 že zaseda drug program (npr. star strežnik). Ustavite ga: v ukazni vrstici `netstat -ano | findstr :8000` (Windows) oziroma `ss -tlnp | grep 8000` (Linux), dobite PID, in ga končajte; nato zaženite znova. |
-| `ModuleNotFoundError` | Okolje ni popolno: ponovite razdelek 3 (`pip install -r requirements.txt`). |
-| Aplikacija se ne odpre v brskalniku | Preverite, da je v terminalu izpis strežnika brez napak in da vnašate točno `http://127.0.0.1:8000/`. |
-| Naj se strežnik ne ujame | Pritisnite `Ctrl+C` v oknu, kjer teče; če se ne ustavi, končajte proces na vratih 8000 kot zgoraj. |
+| Vrata 8000 so zasedena | Drug program uporablja 8000. Ustavite ga ali spremenite port v `docker-compose.yml` / `run.py`. |
+| `Errno 98: Address already in use` | Kot zgoraj; na Windows: `netstat -ano | findstr :8000`, končajte PID. |
+| `ModuleNotFoundError` (lokalno) | Ponovite `pip install -r requirements.txt`. |
+| Podatki se ne shranijo (docker) | Preverite, da je volumen `tekmovanja_data` priklopljen (docker compose up). |
+| Star UI v brskalniku | Osvežite z **Ctrl+Shift+R** (trdi reload). |
 
 ---
 
 ## 8. Za razvijalce
 
-- Vstopna točka: `run.py` (uvicorn, `reload=True`).
-- Koda je v mapi `app/` (glavna logika v `app/main.py`, podatkovni modeli v
-  `app/models.py`, baza v `app/database.py`, nastavitve v `app/settings.py`,
-  pomožne funkcije v `app/utils.py`).
-- Vzorec za dostop do baze v katerem koli koncu: `db=Depends(get_db)`
-  (ne `db=get_db()` — to FastAPI razume kot query parameter in sproži
-  `cannot pickle 'module' object` na vsakem klicu).
-- Baza: en skupen SQLAlchemy engine (`app/database.py` → `get_engine()`);
-  za `:memory:` se uporablja `StaticPool`, da vsa vlakna vidijo isto bazo.
-
----
+- Vstopna točka: `run.py` (uvicorn, `reload=True`) oz. `uvicorn app.main:app` v dockerju.
+- Koda: `app/main.py` (vsi API konci), `app/models.py` (podatkovni modeli),
+  `app/database.py` (SQLite), `app/settings.py` (nastavitve + privzeti podatki),
+  `static/index.html` (celoten vmesnik, brez build koraka).
+- Podatkovna baza: SQLite prek SQLAlchemy; ob zagonu se tabele samodejno
+  ustvarijo (obstoječi podatki se nikoli ne brišejo).
+- Testiranje API-ja: `http://127.0.0.1:8000/docs` (Swagger).
 
 Licenca: MIT (glej `LICENSE`).

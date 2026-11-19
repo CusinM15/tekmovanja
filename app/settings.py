@@ -170,5 +170,13 @@ class AppConfig:
             "disciplines": self.default_disciplines,
         }
 
-# Global config instance
-app_config = AppConfig()
+def get_app_config() -> AppConfig:
+    """Get the application configuration instance (lazy initialization)."""
+    # The AppConfig instance is created on first access
+    if not hasattr(get_app_config, "_instance"):
+        app_config = AppConfig()
+        get_app_config._instance = app_config
+    return get_app_config._instance
+
+# Lazy access function - returned value will be used by API endpoints
+app_config = get_app_config()
