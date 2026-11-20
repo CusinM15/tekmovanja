@@ -17,6 +17,7 @@ import shutil
 import subprocess
 
 import pytest
+import io
 
 CSV_HEADER = "First Name,Last Name,School,Grade,Gender,Discipline (ID)"
 CSV_PRIMER = "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)"
@@ -185,3 +186,19 @@ def test_predloga_vsebuje_id_tabelo_in_stolpec(client):
     assert "Discipline (ID)" in t
     assert "1,tek 60m ♂ (fantje)" in t
     assert "8,met vorteksa ♀ (punce)" in t
+
+
+def test_startna_lista_pdf_s_stolpcem_rezultat(client):
+    """ŠTARTNA LISTA — PDF: /start-lists/{id}/pdf mora vrniti pravi PDF
+    (application/pdf, %PDF), da ga uporabnik lahko prenese/odpre.
+    PDF(tabla štartne liste) mora po novem vsebovati tudi stolpec 'Rezultat'
+    s prostorom za vpis rezultata."""
+    seznami = client.get("/start-lists").json()
+    assert seznami, "seed mora imeti vsaj eno štartno listo"
+    r = client.get(f"/start-lists/{seznami[0]['id']}/pdf")
+    assert r.status_code == 200, r.text
+    assert r.headers["Content-Type"].startswith("application/pdf")
+    assert r.content.startswith(b"%PDF"), "odgovor mora biti pravi PDF"
+    # stolpec 'Rezultat' mora biti v Pythonovem izvornem nizu tabele PDF
+    src = io.open("/home/matej/forgejo/opensource/tekmovanja/app/utils.py", encoding="utf-8").read()
+    assert '"Rezultat"' in src, "start_list_pdf_bytes mora vsebovati stolpec 'Rezultat'"

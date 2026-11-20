@@ -347,18 +347,19 @@ def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
     elems.append(Paragraph(f"Razred: {grade} &nbsp; | &nbsp; Datum: {start_list.event_date.strftime('%d.%m.%Y') if start_list.event_date else '—'}", styles["Normal"]))
     elems.append(Spacer(1, 0.5 * cm))
 
-    data = [["#", "Učenec", "Razred", "Šola"]]
+    data = [["#", "Učenec", "Razred", "Šola", "Rezultat"]]
     for i, pupil in enumerate(pupils, start=1):
         data.append([
             str(i),
             f"{pupil.first_name} {pupil.last_name}",
             pupil.grade or "",
             pupil.school.name if pupil.school else "",
+            "",  # prostor za vpis rezultata
         ])
     if len(data) == 1:
-        data.append(["1", "Ni učencev na listi.", "", ""])
+        data.append(["1", "Ni učencev na listi.", "", "", ""])
 
-    t = Table(data, repeatRows=1, colWidths=[1.2 * cm, 5.5 * cm, 2.0 * cm, 7.0 * cm])
+    t = Table(data, repeatRows=1, colWidths=[1.0 * cm, 5.8 * cm, 1.8 * cm, 5.4 * cm, 3.0 * cm])
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), font),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
