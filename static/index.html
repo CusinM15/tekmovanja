@@ -148,7 +148,7 @@
   <!-- ============ DISCIPLINE ============ -->
   <section class="stran" id="stran-discipline">
     <h2>Discipline</h2>
-    <p class="opis">Športne discipline tekmovanja. Odstranitev discipline ne izbriše njenih rezultatov iz zgodovine.</p>
+    <p class="opis">Športne discipline tekmovanja. Odstranitev izbriše tudi rezultate, rekorde in štartne liste discipline.</p>
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalDisciplina()">＋ Dodaj disciplino</button>
     </div>
@@ -754,7 +754,7 @@ function shraniDisciplino(id){
 }
 
 function izbrisiDisciplino(id){
-  if (!confirm('Ali res želite odstraniti to disciplino?\n\nRezultati iz zgodovine ostanejo shranjeni.')) return;
+  if (!confirm('Ali res želite odstraniti to disciplino?\n\nIzbrišejo se tudi njeni rezultati, rekordi in štartne liste.')) return;
   api('/disciplines/' + id, 'DELETE').then(function(r){
     toast(r.message || 'Disciplina odstranjena.', 'ok');
     natovoriDiscipline(); natovoriPregled();

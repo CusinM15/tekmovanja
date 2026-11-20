@@ -168,12 +168,19 @@ class DisciplineService:
         disc = db.query(Discipline).get(discipline_id)
         if not disc:
             raise HTTPException(status_code=404, detail="Disciplina ne obstaja.")
-        # ne brišemo zgodovinskih rezultatov; samo označimo atribut? Ni status polja —
-        # zato ga pustimo v bazi, vendar ga izključimo iz seznamov z flag nastavimo.
-        # Po spec: odstranitev ne sme izbrisati zgodovinskih rezultatov.
+        # Najprej izbriši VSE, kar se nanaša nanjo (rezultati, rekordi, štartne liste).
+        # Brez tega SQLAlchemy poskuša na dogodkih nastaviti discipline_id=NULL,
+        # kar pade na NOT NULL omejitvi (500) — zato gumb za brisanje "ni delal".
+        for sl in list(disc.start_lists):
+            sl.pupils = []      # počisti povezovalno tabelo start_list_pupils
+            db.delete(sl)
+        for e in list(disc.events):
+            db.delete(e)
+        for r in list(disc.records):
+            db.delete(r)
         db.delete(disc)
         db.commit()
-        return {"message": f"Disciplina '{disc.name}' odstranjena."}
+        return {"message": f"Disciplina '{disc.name}' odstranjena (skupaj z njenimi rezultati, rekordi in štartnimi listami)."}
 
 
 class PupilService:
