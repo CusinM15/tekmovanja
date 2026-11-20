@@ -770,32 +770,43 @@ function natovoriRezultate(){
     REZULTATI_DOGODKI = rez[0];
     var disc = rez[1];
     VSE_DISCIPLINE = disc;
-    // N (nastopajoči) naložimo LOČENO: če štartne liste kdaj odpovejo, morajo
-    // kartice VSEENO ostati (takrat N=0), da se zavihek Rezultati ne podre.
-    api('/start-lists').then(function(starti){
-      izrisiKarticeRezultati(disc, starti || []);
+    // N (vsi učenci, ki spadajo pod disciplino) naložimo LOČENO: če /pupils kdaj
+    // odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
+    api('/pupils').then(function(ucenci){
+      izrisiKarticeRezultati(disc, ucenci || []);
     }).catch(function(){
       izrisiKarticeRezultati(disc, []);
-      toast('Štartne liste niso na voljo — N prikazan kot 0.', 'napaka');
+      toast('Učenci niso na voljo — N prikazan kot 0.', 'napaka');
     });
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
-function izrisiKarticeRezultati(disc, starti){
-  // Nastopajoči po disciplini in razredu (edinstveni učenci s štartnih list)
-  var nastopi = {}; // disc_id -> { '2.r': {pupil_id: true}, '3.r': {...} }
-  for (var si = 0; si < starti.length; si++){
-    var sl = starti[si];
-    if (!nastopi[sl.discipline_id]) nastopi[sl.discipline_id] = {};
-    if (!nastopi[sl.discipline_id][sl.grade]) nastopi[sl.discipline_id][sl.grade] = {};
-    var mnozica = nastopi[sl.discipline_id][sl.grade];
-    var ucenciSL = sl.pupils || [];
-    for (var pi = 0; pi < ucenciSL.length; pi++) mnozica[ucenciSL[pi].id] = true;
+// Število vseh učencev, ki spadajo pod disciplino v določenem razredu:
+// gender discipline = gender učenca (razred ločuje po applicable_grades).
+function stejUcenceDiscipline(ucenci, d, razred){
+  var n = 0;
+  for (var u = 0; u < ucenci.length; u++){
+    var p = ucenci[u];
+    if (p.gender !== d.gender) continue;
+    if (p.grade !== razred) continue;
+    n++;
   }
-  // Pregled: kartica za vsako disciplino, v dveh vrsticah x/N (x=rezultat, N=nastopajoči)
+  return n;
+}
+
+function izrisiKarticeRezultati(disc, ucenci){
+  // Pregled: kartica za vsako disciplino, v dveh vrsticah x/N.
+  // N = VSI učenci, ki spadajo pod to disciplino (gender + applicable_grades).
+  // Ni več vezano na štartne liste, zato se N ne sme prikazati kot 0, ko štartne
+  // liste manjkajo (npr. 3.r še nima štartnih list).
   var kartice = '';
   for (var i = 0; i < disc.length; i++){
     var d = disc[i];
+    var deli = (d.applicable_grades || '').split(',');
+    var veljavni = {};
+    for (var ri = 0; ri < deli.length; ri++) veljavni[deli[ri].trim()] = true;
+    var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r') : 0;
+    var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r') : 0;
     var zRez2 = {}, zRez3 = {};
     for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
       var e = REZULTATI_DOGODKI[j];
@@ -804,8 +815,6 @@ function izrisiKarticeRezultati(disc, starti){
       else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
     }
     var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
-    var N2 = (nastopi[d.id] && nastopi[d.id]['2.r']) ? Object.keys(nastopi[d.id]['2.r']).length : 0;
-    var N3 = (nastopi[d.id] && nastopi[d.id]['3.r']) ? Object.keys(nastopi[d.id]['3.r']).length : 0;
     kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
       '<div class="ime">' + esc(d.name) + '</div>' +
       '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +

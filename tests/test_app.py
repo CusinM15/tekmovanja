@@ -4,7 +4,8 @@ Regresijski testi za app Tekmovanja.
 Pokrivajo točno to, kar uporabnik zahteva, da se ne podre po vsaki nadgradnji:
   1. Kartice na zavihku Rezultati VEDNO izpišejo dve vrstici "2.r: x/N" in "3.r: x/N"
      (x = število vpisanih rezultatov za disciplino+razred,
-      N = število vseh nastopajočih na štartnih listah za disciplino+razred).
+      N = število VSEH učencev, ki spadajo pod disciplino — gender discipline =
+          gender učenca in razred ∈ applicable_grades; ni več vezano na štartne liste).
   2. Gumb "Odstrani" pri disciplinah DELUJE tudi, ko ima disciplina rezultate.
   3. CSV uvoz z Discipline (ID) deluje in je idempotenten; napake ne shranijo ničesar.
   4. Predloga vsebuje ID tabelo disciplin in stolpec Discipline (ID).
@@ -36,13 +37,15 @@ def _start_lists(client):
     return client.get("/start-lists").json()
 
 
-def _nastopajoci_po_disciplini_in_razredu(starti):
-    """Ista logika kot izrisiKarticeRezultati v index.html (N po disciplini+razredu)."""
+def _ucenci_po_disciplini_in_razredu(ucenci, disc):
+    """Ista logika kot izrisiKarticeRezultati v index.html:
+    N = vsi učenci, ki spadajo pod disciplino (gender=disc.gender in grade ∈ applicable_grades)."""
     nastopi = {}
-    for sl in starti:
-        nastopi.setdefault(sl["discipline_id"], {}).setdefault(sl["grade"], set()).update(
-            p["id"] for p in (sl.get("pupils") or [])
-        )
+    for d in disc:
+        grades = {g.strip() for g in (d.get("applicable_grades") or "").split(",")}
+        for p in ucenci:
+            if p["gender"] == d["gender"] and p["grade"] in grades:
+                nastopi.setdefault(d["id"], {}).setdefault(p["grade"], set()).add(p["id"])
     return nastopi
 
 
@@ -83,8 +86,8 @@ def test_kartice_xN_format_za_vsako_disciplino(client):
     (x = rezultati, N = nastopajoči). 2.r mora imeti nastopajoče (N>0) in x<=N."""
     dogodki = _events(client)
     disc = _disciplines(client)
-    starti = _start_lists(client)
-    nastopi = _nastopajoci_po_disciplini_in_razredu(starti)
+    ucenci = client.get("/pupils").json()
+    nastopi = _ucenci_po_disciplini_in_razredu(ucenci, disc)
 
     assert len(disc) >= 2, "brez disciplin ni kartic"
     for d in disc:
@@ -94,15 +97,18 @@ def test_kartice_xN_format_za_vsako_disciplino(client):
         vrstica3 = "3.r: %d/%d" % (x3, N3)
         assert vrstica2.startswith("2.r: ") and "/" in vrstica2, d["name"]
         assert vrstica3.startswith("3.r: ") and "/" in vrstica3, d["name"]
-        assert N2 > 0, f"disciplina {d['name']}: N(2.r) mora biti > 0 (štartna lista obstaja)"
+        # N = vsi učenci, ki spadajo pod disciplino → mora biti > 0 za OBA razreda,
+        # tudi ko štartne liste za 3.r še ne obstajajo (N ni več odvisen od štartnih list).
+        assert N2 > 0 and N3 > 0, f"disciplina {d['name']}: N mora biti > 0 za 2.r in 3.r (N2={N2}, N3={N3})"
         assert x2 <= N2, f"disciplina {d['name']}: x(2.r)={x2} ne sme preseči N={N2}"
+        assert x3 <= N3, f"disciplina {d['name']}: x(3.r)={x3} ne sme preseči N={N3}"
 
 
 def test_servirana_stran_vsebuje_kodo_kartic_xN(client):
     """UI POGODBA: serviran index.html MORA vsebovati kodo za izris kartic x/N,
     da se ob kakršnikoli nadgradnji ne izgubi."""
     _, js = _served_js(client)
-    assert "api('/start-lists')" in js, "natovoriRezultate mora za N nalagati štartne liste"
+    assert "api('/pupils')" in js, "natovoriRezultate mora za N naložiti vse učence (tiste, ki spadajo pod disciplino)"
     assert "'<div class=\"razred\">2.r: <strong>'" in js, "kartica mora izrisati vrstico 2.r x/N"
     assert "'<div class=\"razred\">3.r: <strong>'" in js, "kartica mora izrisati vrstico 3.r x/N"
     assert "izrisiKarticeRezultati" in js, "kartice morajo biti odporne (ločen izris, N=0 ob napaki)"
