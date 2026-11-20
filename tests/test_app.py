@@ -1,0 +1,181 @@
+"""
+Regresijski testi za app Tekmovanja.
+
+Pokrivajo točno to, kar uporabnik zahteva, da se ne podre po vsaki nadgradnji:
+  1. Kartice na zavihku Rezultati VEDNO izpišejo dve vrstici "2.r: x/N" in "3.r: x/N"
+     (x = število vpisanih rezultatov za disciplino+razred,
+      N = število vseh nastopajočih na štartnih listah za disciplino+razred).
+  2. Gumb "Odstrani" pri disciplinah DELUJE tudi, ko ima disciplina rezultate.
+  3. CSV uvoz z Discipline (ID) deluje in je idempotenten; napake ne shranijo ničesar.
+  4. Predloga vsebuje ID tabelo disciplin in stolpec Discipline (ID).
+
+Poženemo z:  ./venv/bin/python -m pytest tests/ -v
+"""
+import re
+import shutil
+import subprocess
+
+import pytest
+
+CSV_HEADER = "First Name,Last Name,School,Grade,Gender,Discipline (ID)"
+CSV_PRIMER = "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)"
+LEGENDA = "ID,Disciplina (za koga)"
+
+
+# ===================== POMOŽNE =====================
+
+def _events(client):
+    return client.get("/events").json()
+
+
+def _disciplines(client):
+    return client.get("/disciplines").json()
+
+
+def _start_lists(client):
+    return client.get("/start-lists").json()
+
+
+def _nastopajoci_po_disciplini_in_razredu(starti):
+    """Ista logika kot izrisiKarticeRezultati v index.html (N po disciplini+razredu)."""
+    nastopi = {}
+    for sl in starti:
+        nastopi.setdefault(sl["discipline_id"], {}).setdefault(sl["grade"], set()).update(
+            p["id"] for p in (sl.get("pupils") or [])
+        )
+    return nastopi
+
+
+def _kartica_stevila(dogodki, d, nastopi):
+    """Vrne (x2, N2, x3, N3) točno tako, kot jih izračuna JS v izrisiKarticeRezultati."""
+    x2 = len({e["pupil_id"] for e in dogodki if e["discipline_id"] == d["id"] and e["pupil_grade"] == "2.r"})
+    x3 = len({e["pupil_id"] for e in dogodki if e["discipline_id"] == d["id"] and e["pupil_grade"] == "3.r"})
+    N2 = len(nastopi.get(d["id"], {}).get("2.r", set()))
+    N3 = len(nastopi.get(d["id"], {}).get("3.r", set()))
+    return x2, N2, x3, N3
+
+
+def _served_js(client):
+    html = client.get("/").text
+    m = re.search(r"<script>(.*?)</script>", html, re.S)
+    assert m, "stran mora vsebovati <script>"
+    return html, m.group(1)
+
+
+# ===================== TESTI =====================
+
+def test_stran_se_nalozi(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Tekmovanja" in r.text
+
+
+def test_seed_podatki_obstajajo(client):
+    """Ob prvem zagonu mora biti baza napolnjena (tudi v testni bazi)."""
+    assert len(_disciplines(client)) == 8
+    assert len(client.get("/pupils").json()) == 120
+    assert len(_events(client)) == 120
+    assert len(_start_lists(client)) == 8
+
+
+def test_kartice_xN_format_za_vsako_disciplino(client):
+    """KARTICE: za vsako disciplino morata obstajati obe vrstici '2.r: x/N' in '3.r: x/N'
+    (x = rezultati, N = nastopajoči). 2.r mora imeti nastopajoče (N>0) in x<=N."""
+    dogodki = _events(client)
+    disc = _disciplines(client)
+    starti = _start_lists(client)
+    nastopi = _nastopajoci_po_disciplini_in_razredu(starti)
+
+    assert len(disc) >= 2, "brez disciplin ni kartic"
+    for d in disc:
+        x2, N2, x3, N3 = _kartica_stevila(dogodki, d, nastopi)
+        # vrstici, ki ju kartica izpiše:
+        vrstica2 = "2.r: %d/%d" % (x2, N2)
+        vrstica3 = "3.r: %d/%d" % (x3, N3)
+        assert vrstica2.startswith("2.r: ") and "/" in vrstica2, d["name"]
+        assert vrstica3.startswith("3.r: ") and "/" in vrstica3, d["name"]
+        assert N2 > 0, f"disciplina {d['name']}: N(2.r) mora biti > 0 (štartna lista obstaja)"
+        assert x2 <= N2, f"disciplina {d['name']}: x(2.r)={x2} ne sme preseči N={N2}"
+
+
+def test_servirana_stran_vsebuje_kodo_kartic_xN(client):
+    """UI POGODBA: serviran index.html MORA vsebovati kodo za izris kartic x/N,
+    da se ob kakršnikoli nadgradnji ne izgubi."""
+    _, js = _served_js(client)
+    assert "api('/start-lists')" in js, "natovoriRezultate mora za N nalagati štartne liste"
+    assert "'<div class=\"razred\">2.r: <strong>'" in js, "kartica mora izrisati vrstico 2.r x/N"
+    assert "'<div class=\"razred\">3.r: <strong>'" in js, "kartica mora izrisati vrstico 3.r x/N"
+    assert "izrisiKarticeRezultati" in js, "kartice morajo biti odporne (ločen izris, N=0 ob napaki)"
+    assert "pupil_grade" in js, "x mora šteti rezultate po razredu učenca"
+
+
+def test_servirana_js_sintaksa(client):
+    """Serviran JavaScript mora imeti veljavno sintakso (node --check)."""
+    if shutil.which("node") is None:
+        pytest.skip("node ni na voljo")
+    _, js = _served_js(client)
+    p = subprocess.run(["node", "--check", "-"], input=js.encode(), capture_output=True)
+    assert p.returncode == 0, p.stderr.decode()
+
+
+def test_odstrani_disciplino_z_rezultati(client):
+    """GUMB ODSTRANI: disciplina z rezultati (in štartno listo) se mora pobrisati,
+    brez sirot; ponovni poskus vrne 404."""
+    d = client.post("/disciplines", data={"name": "TEST brisanje", "gender": "M"}).json()
+    did = d["id"]
+    r = client.post("/events", data={"pupil_id": 1, "discipline_id": did, "time": 11.11, "position": 1})
+    assert r.status_code == 200
+    r = client.post("/start-lists", data={"discipline_id": did, "grade": "2.r", "event_date": "2026-12-01T08:00:00", "pupil_ids": "1,2"})
+    assert r.status_code == 200, r.text
+
+    resp = client.delete(f"/disciplines/{did}")
+    assert resp.status_code == 200, resp.text
+
+    ids = [x["id"] for x in _disciplines(client)]
+    assert did not in ids, "disciplina mora izginiti iz seznama"
+    assert not [e for e in _events(client) if e["discipline_id"] == did], "rezultati morajo izginiti"
+    assert not [s for s in _start_lists(client) if s["discipline_id"] == did], "štartne liste morajo izginiti"
+    assert client.delete(f"/disciplines/{did}").status_code == 404
+
+
+def test_uvoz_csv_z_disciplino_in_idempotenca(client):
+    """CSV UVOZ: stolpec Discipline (ID) vpiše učenca na štartne liste;
+    ponovni uvoz iste datoteke ne sme ničesar podvojiti."""
+    csv = (
+        "\ufeff" + LEGENDA + "\n1,tek 60m ♂ (fantje)\n\n"
+        + CSV_HEADER + "\n" + CSV_PRIMER + "\n"
+        + "Testa,Uvozna,OŠ Žirovnica,2.r,M,1 3\n"
+    )
+    r1 = client.post("/import-csv", files={"file": ("test.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert r1["status"] == "success", r1
+    assert r1["records_created"] == 1
+    assert r1["start_entries"] == 2  # ID 1 in 3
+
+    r2 = client.post("/import-csv", files={"file": ("test.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert r2["status"] == "success", r2
+    assert r2["records_created"] == 0 and r2["start_entries"] == 0, "ponovni uvoz mora biti idempotenten"
+
+
+def test_uvoz_csv_napaka_ne_shrani_nicesar(client):
+    """CSV UVOZ: neznan ID discipline ali napačen spol -> status error,
+    v bazi se ne sme pojaviti nič (rollback)."""
+    csv = "\ufeff" + CSV_HEADER + "\n" + "Napaka,Uvozna2,OŠ Žirovnica,2.r,M,99\n"
+    r = client.post("/import-csv", files={"file": ("bad.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert r["status"] == "error", r
+    assert not [p for p in client.get("/pupils").json() if p["first_name"] == "Napaka"], \
+        "ob napaki se učenec ne sme shraniti"
+
+    csv2 = "\ufeff" + CSV_HEADER + "\n" + "Mojca,Testna3,OŠ Žirovnica,2.r,Ž,1\n"
+    r2 = client.post("/import-csv", files={"file": ("bad2.csv", csv2.encode("utf-8"), "text/csv")}).json()
+    assert r2["status"] == "error", r2
+    assert any("drug spol" in e for e in r2["errors"]), r2
+
+
+def test_predloga_vsebuje_id_tabelo_in_stolpec(client):
+    """PREDLOGA: /send-invitations mora vsebovati ID tabelo disciplin in stolpec Discipline (ID)."""
+    j = client.get("/send-invitations").json()
+    t = j["csv_template"]
+    assert LEGENDA in t
+    assert "Discipline (ID)" in t
+    assert "1,tek 60m ♂ (fantje)" in t
+    assert "8,met vorteksa ♀ (punce)" in t

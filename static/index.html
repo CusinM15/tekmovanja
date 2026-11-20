@@ -766,45 +766,55 @@ var REZULTATI_DOGODKI = [];
 var REZULTATI_AKTIVNA = null;   // id discipline, ki je odprta v podpogledu (null = pregled)
 
 function natovoriRezultate(){
-  return Promise.all([api('/events'), api('/disciplines'), api('/start-lists')]).then(function(rez){
+  return Promise.all([api('/events'), api('/disciplines')]).then(function(rez){
     REZULTATI_DOGODKI = rez[0];
     var disc = rez[1];
-    var starti = rez[2] || [];
     VSE_DISCIPLINE = disc;
-    // Nastopajoči po disciplini in razredu (edinstveni učenci s štartnih list)
-    var nastopi = {}; // disc_id -> { '2.r': {pupil_id: true}, '3.r': {...} }
-    for (var si = 0; si < starti.length; si++){
-      var sl = starti[si];
-      if (!nastopi[sl.discipline_id]) nastopi[sl.discipline_id] = {};
-      if (!nastopi[sl.discipline_id][sl.grade]) nastopi[sl.discipline_id][sl.grade] = {};
-      var mnozica = nastopi[sl.discipline_id][sl.grade];
-      var ucenciSL = sl.pupils || [];
-      for (var pi = 0; pi < ucenciSL.length; pi++) mnozica[ucenciSL[pi].id] = true;
-    }
-    // Pregled: kartica za vsako disciplino, v dveh vrsticah x/N (x=rezultat, N=nastopajoči)
-    var kartice = '';
-    for (var i = 0; i < disc.length; i++){
-      var d = disc[i];
-      var zRez2 = {}, zRez3 = {};
-      for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
-        var e = REZULTATI_DOGODKI[j];
-        if (e.discipline_id !== d.id) continue;
-        if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
-        else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
-      }
-      var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
-      var N2 = (nastopi[d.id] && nastopi[d.id]['2.r']) ? Object.keys(nastopi[d.id]['2.r']).length : 0;
-      var N3 = (nastopi[d.id] && nastopi[d.id]['3.r']) ? Object.keys(nastopi[d.id]['3.r']).length : 0;
-      kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
-        '<div class="ime">' + esc(d.name) + '</div>' +
-        '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
-        '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
-    }
-    $('rz-kartice').innerHTML = kartice;
-    $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
-    // Če je odprt podpogled discipline, ga po osvežitvi obdrži
-    if (REZULTATI_AKTIVNA) prikaziRezultateDiscipline(REZULTATI_AKTIVNA);
+    // N (nastopajoči) naložimo LOČENO: če štartne liste kdaj odpovejo, morajo
+    // kartice VSEENO ostati (takrat N=0), da se zavihek Rezultati ne podre.
+    api('/start-lists').then(function(starti){
+      izrisiKarticeRezultati(disc, starti || []);
+    }).catch(function(){
+      izrisiKarticeRezultati(disc, []);
+      toast('Štartne liste niso na voljo — N prikazan kot 0.', 'napaka');
+    });
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izrisiKarticeRezultati(disc, starti){
+  // Nastopajoči po disciplini in razredu (edinstveni učenci s štartnih list)
+  var nastopi = {}; // disc_id -> { '2.r': {pupil_id: true}, '3.r': {...} }
+  for (var si = 0; si < starti.length; si++){
+    var sl = starti[si];
+    if (!nastopi[sl.discipline_id]) nastopi[sl.discipline_id] = {};
+    if (!nastopi[sl.discipline_id][sl.grade]) nastopi[sl.discipline_id][sl.grade] = {};
+    var mnozica = nastopi[sl.discipline_id][sl.grade];
+    var ucenciSL = sl.pupils || [];
+    for (var pi = 0; pi < ucenciSL.length; pi++) mnozica[ucenciSL[pi].id] = true;
+  }
+  // Pregled: kartica za vsako disciplino, v dveh vrsticah x/N (x=rezultat, N=nastopajoči)
+  var kartice = '';
+  for (var i = 0; i < disc.length; i++){
+    var d = disc[i];
+    var zRez2 = {}, zRez3 = {};
+    for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+      var e = REZULTATI_DOGODKI[j];
+      if (e.discipline_id !== d.id) continue;
+      if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
+      else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
+    }
+    var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+    var N2 = (nastopi[d.id] && nastopi[d.id]['2.r']) ? Object.keys(nastopi[d.id]['2.r']).length : 0;
+    var N3 = (nastopi[d.id] && nastopi[d.id]['3.r']) ? Object.keys(nastopi[d.id]['3.r']).length : 0;
+    kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
+      '<div class="ime">' + esc(d.name) + '</div>' +
+      '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
+      '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
+  }
+  $('rz-kartice').innerHTML = kartice;
+  $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
+  // Če je odprt podpogled discipline, ga po osvežitvi obdrži
+  if (REZULTATI_AKTIVNA) prikaziRezultateDiscipline(REZULTATI_AKTIVNA);
 }
 
 function prikaziRezultateDiscipline(id){
