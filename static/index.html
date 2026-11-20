@@ -304,15 +304,43 @@ function esc(s){
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function casLepo(v){
+function enotaZaDisciplino(ime){
+  // skok v daljino → cm, met vorteksa → m, vse ostalo → s
+  var n = String(ime || '').replace(/[♂♀]/g, '').toLowerCase();
+  if (n.indexOf('skok v daljino') !== -1) return 'cm';
+  if (n.indexOf('vorteksa') !== -1) return 'm';
+  return 's';
+}
+
+function casLepo(v, imeDisc){
   if (v == null || v === '') return '';
   var n = parseFloat(v);
   if (isNaN(n)) return esc(v);
-  if (n >= 60) {
+  var enota = enotaZaDisciplino(imeDisc);
+  if (enota === 's' && n >= 60) {
     var m = Math.floor(n / 60), s = (n % 60).toFixed(2);
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
-  return n.toFixed(2).replace('.', ',') + ' s';
+  return n.toFixed(2).replace('.', ',') + ' ' + enota;
+}
+
+function enotaLabel(imeDisc){
+  var u = enotaZaDisciplino(imeDisc);
+  return u === 's' ? 'sekundah' : (u === 'cm' ? 'centimetrih' : 'metrih');
+}
+
+// Ob spremembi discipline v modalu posodobi label enote (rezultat / rekord).
+function posodobiEnotoRez(sel){
+  var d = null;
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === parseInt(sel.value, 10)) d = VSE_DISCIPLINE[i];
+  var lab = $('f-r-cas-label');
+  if (lab) lab.textContent = 'Čas (v ' + (enotaLabel(d && d.name) || 'sekundah') + ', npr. 12,5)';
+}
+function posodobiEnotoRekord(sel){
+  var d = null;
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === parseInt(sel.value, 10)) d = VSE_DISCIPLINE[i];
+  var lab = $('f-k-cas-label');
+  if (lab) lab.textContent = 'Čas / dolžina (v ' + (enotaLabel(d && d.name) || 'sekundah') + ', npr. 12,5)';
 }
 
 function datumLepo(iso){
@@ -623,7 +651,7 @@ function natovoriDejavnost(){
           '<td>' + (u.gender === 'M' ? '♂ ' : '♀ ') + esc(nm) + '</td>' +
           '<td>' + esc(u.grade) + '</td>' +
           '<td>' + esc(u.school_name || '') + '</td>' +
-          '<td>' + (cas[u.id] !== undefined ? casLepo(cas[u.id]) : '—') + '</td>' +
+          '<td>' + (cas[u.id] !== undefined ? casLepo(cas[u.id], disc && disc.name) : '—') + '</td>' +
           '<td>' + (mesto[u.id] !== undefined ? mesto[u.id] + '.' : '—') + '</td>' +
           '</tr>';
       }
@@ -901,7 +929,7 @@ function prikaziRezultateDiscipline(id){
         vrstice += '<tr>' +
           '<td>' + esc(u.first_name + ' ' + u.last_name) + '</td>' +
           '<td>' + esc(u.school_name || '') + '</td>' +
-          '<td><strong>' + (e ? casLepo(e.time) : '—') + '</strong></td>' +
+          '<td><strong>' + (e ? casLepo(e.time, dsc.name) : '—') + '</strong></td>' +
           '<td>' + (e && e.position != null ? e.position + '.' : '—') + '</td>' +
           '<td>' + (e ? esc(e.notes || '') : '—') + '</td>' +
           '<td style="text-align:right;white-space:nowrap">' + akcija + '</td></tr>';
@@ -948,11 +976,13 @@ function odpriModalRezultat(id, predDisciplina, predUcenec){
     var izbranD = dogodek ? dogodek.discipline_id : (predDisciplina || null);
     var opcijeU = VSI_UCENCI.map(function(u){ return '<option value="' + u.id + '"' + (u.id === izbranU ? ' selected' : '') + '>' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</option>'; }).join('');
     var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '"' + (d.id === izbranD ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('');
+    var izbDiscIme = '';
+    for (var di = 0; di < VSE_DISCIPLINE.length; di++) if (VSE_DISCIPLINE[di].id === izbranD) izbDiscIme = VSE_DISCIPLINE[di].name;
     $('modal-vsebina').innerHTML =
       '<h3>' + (jeUrejanje ? '✏️ Uredi rezultat' : '＋ Dodaj rezultat') + '</h3>' +
       '<div class="polje"><label>Učenec</label><select id="f-r-ucenec">' + opcijeU + '</select></div>' +
-      '<div class="polje"><label>Disciplina</label><select id="f-r-disciplina">' + opcijeD + '</select></div>' +
-      '<div class="polje"><label>Čas (v sekundah, npr. 12,5 ali 10.23)</label><input id="f-r-cas" value="' + esc(dogodek ? String(dogodek.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+      '<div class="polje"><label>Disciplina</label><select id="f-r-disciplina" onchange="posodobiEnotoRez(this)">' + opcijeD + '</select></div>' +
+      '<div class="polje"><label id="f-r-cas-label">Čas (v ' + (enotaLabel(izbDiscIme) || 'sekundah') + ', npr. 12,5)</label><input id="f-r-cas" value="' + esc(dogodek ? String(dogodek.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
       '<div class="polje"><label>Opombe (neobvezno)</label><textarea id="f-r-opombe" rows="2">' + esc(dogodek ? dogodek.notes || '' : '') + '</textarea></div>' +
       '<div class="modal-gumbi">' +
         '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -1002,7 +1032,7 @@ function natovoriRekorde(){
         '<td>' + esc(r.pupil_grade || '') + '</td>' +
         '<td>' + esc(r.discipline_name || '—') + '</td>' +
         '<td>' + esc(r.school_name || '—') + '</td>' +
-        '<td><strong>' + casLepo(r.time) + '</strong></td>' +
+        '<td><strong>' + casLepo(r.time, r.discipline_name) + '</strong></td>' +
         '<td>' + datumLepo(r.date_recorded) + '</td>' +
         '<td style="text-align:right;white-space:nowrap">' +
           '<span class="povezava" onclick="odpriModalRekord(' + r.id + ')">✏️ Uredi</span>' +
@@ -1030,11 +1060,17 @@ function odpriModalRekord(id){
       var d = new Date(rekord.date_recorded);
       if (!isNaN(d)) datum = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
     }
+    var izbDiscIme = '';
+    if (rekord){
+      for (var di = 0; di < VSE_DISCIPLINE.length; di++) if (VSE_DISCIPLINE[di].id === rekord.discipline_id) izbDiscIme = VSE_DISCIPLINE[di].name;
+    } else if (VSE_DISCIPLINE.length){
+      izbDiscIme = VSE_DISCIPLINE[0].name;
+    }
     $('modal-vsebina').innerHTML =
       '<h3>' + (jeUrejanje ? '✏️ Uredi rekord' : '＋ Dodaj rekord') + '</h3>' +
       '<div class="polje"><label>Učenec</label><select id="f-k-ucenec">' + opcijeU + '</select></div>' +
-      '<div class="polje"><label>Disciplina</label><select id="f-k-disciplina">' + opcijeD + '</select></div>' +
-      '<div class="polje"><label>Čas / dolžina (v sekundah, npr. 12,5)</label><input id="f-k-cas" value="' + esc(rekord ? String(rekord.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+      '<div class="polje"><label>Disciplina</label><select id="f-k-disciplina" onchange="posodobiEnotoRekord(this)">' + opcijeD + '</select></div>' +
+      '<div class="polje"><label id="f-k-cas-label">Čas / dolžina (v ' + (enotaLabel(izbDiscIme) || 'sekundah') + ', npr. 12,5)</label><input id="f-k-cas" value="' + esc(rekord ? String(rekord.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
       '<div class="polje"><label>Datum (neobvezno)</label><input id="f-k-datum" type="date" value="' + esc(datum) + '"></div>' +
 
       '<div class="modal-gumbi">' +
@@ -1257,7 +1293,7 @@ function natovoriBestResults(){
       vrstice += '<tr>' +
         '<td><strong>' + esc(r.discipline_name) + '</strong></td>' +
         '<td>' + esc(r.grade) + '</td>' +
-        '<td><strong>' + casLepo(r.time) + '</strong></td>' +
+        '<td><strong>' + casLepo(r.time, r.discipline_name) + '</strong></td>' +
         '<td>' + esc(r.pupils.join(', ')) + '</td>' +
         '</tr>';
     }

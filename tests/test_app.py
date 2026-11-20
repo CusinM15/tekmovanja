@@ -307,3 +307,14 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
     assert j2["status"] == "success", j2
     assert j2["records_created"] == 1, j2
 
+
+def test_enota_za_disciplino():
+    """Enota rezultata je odvisna od discipline: skok v daljino → cm,
+    met vorteksa → m, tek → s."""
+    from app.utils import enota_za_disciplino
+    assert enota_za_disciplino("met vorteksa ♂") == "m"
+    assert enota_za_disciplino("skok v daljino ♀") == "cm"
+    assert enota_za_disciplino("tek 60m ♂") == "s"
+    assert enota_za_disciplino("") == "s"
+    assert enota_za_disciplino(None) == "s"
+

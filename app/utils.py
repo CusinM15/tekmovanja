@@ -12,6 +12,16 @@ from app.models import School, Discipline, Pupil, CompetitionEvent, Record, Star
 DB = None
 
 
+def enota_za_disciplino(ime):
+    """Enota rezultata glede na disciplino: skok v daljino → cm, met vorteksa → m, drugo → s."""
+    n = (ime or "").replace("♂", "").replace("♀", "").lower()
+    if "skok v daljino" in n:
+        return "cm"
+    if "vorteksa" in n:
+        return "m"
+    return "s"
+
+
 def get_db_session():
     """Get a database session."""
     global DB
@@ -316,7 +326,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati"):
             _cell_par(f"{pupil.first_name} {pupil.last_name}" if pupil else "—", font, size=9),
             _cell_par(pupil.grade if pupil else "", font, size=9),
             _cell_par(disc.name if disc else "—", font, size=9),
-            _cell_par(f"{ev.time:.2f}" if ev.time is not None else "", font, size=9),
+            _cell_par(f"{ev.time:.2f} {enota_za_disciplino(disc.name if disc else '')}" if ev.time is not None else "", font, size=9),
             _cell_par(str(ev.position) if ev.position is not None else "", font, size=9),
             _cell_par((ev.notes or "") or "", font, size=9),
         ])
