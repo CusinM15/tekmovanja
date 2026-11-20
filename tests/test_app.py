@@ -204,6 +204,51 @@ def test_startna_lista_pdf_s_stolpcem_rezultat(client):
     assert '"Rezultat"' in src, "start_list_pdf_bytes mora vsebovati stolpec 'Rezultat'"
 
 
+
+
+def test_avtomatizirani_rekordi_ob_vpisu_rezultata(client):
+    """Ob vpisu rezultata prek /events se tabela rekordov samodejno posodobi:
+    - boljši čas  -> nadomesti (stara vrstica izgine),
+    - enak čas    -> nova vrstica (tie, ista disciplina ima lahko več vrstic),
+    - slabši      -> nespremenjeno."""
+    ucenci = client.get("/pupils").json()
+    disc = client.get("/disciplines").json()
+    rek = client.get("/records").json()
+    target = next(r for r in rek if r["pupil_grade"])
+    disc_id, grade = target["discipline_id"], target["pupil_grade"]
+    d = next(x for x in disc if x["id"] == disc_id)
+    kandidat = next(u for u in ucenci if u["grade"] == grade and u["gender"] == d["gender"])
+
+    # 1) boljši rezultat -> nadomesti vse rekorde te discipline+razreda
+    trenutni = [r for r in client.get("/records").json()
+                if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    best = min(x["time"] for x in trenutni)
+    boljsi = round(best - 1.0, 2)
+    r1 = client.post("/events", data={"pupil_id": kandidat["id"], "discipline_id": disc_id,
+                                      "time": boljsi, "position": 1})
+    assert r1.status_code == 200, r1.text
+    od = [r for r in client.get("/records").json()
+          if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    assert len(od) == 1 and abs(od[0]["time"] - boljsi) < 1e-9, f"boljši mora nadomestiti: {od}"
+
+    # 2) enak čas (drug učenec) -> nova vrstica
+    drugi = next(u for u in ucenci if u["id"] != kandidat["id"]
+                 and u["grade"] == grade and u["gender"] == d["gender"])
+    r2 = client.post("/events", data={"pupil_id": drugi["id"], "discipline_id": disc_id,
+                                      "time": boljsi, "position": 2})
+    assert r2.status_code == 200, r2.text
+    od2 = [r for r in client.get("/records").json()
+           if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    assert len(od2) == 2, f"enak čas -> 2 vrstici: {od2}"
+
+    # 3) slabši -> nespremenjeno (ostaneta 2)
+    r3 = client.post("/events", data={"pupil_id": kandidat["id"], "discipline_id": disc_id,
+                                      "time": boljsi + 1.5, "position": 3})
+    assert r3.status_code == 200, r3.text
+    od3 = [r for r in client.get("/records").json()
+           if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    assert len(od3) == 2, f"slabši -> nespremenjeno: {od3}"
+
 def test_delete_data_nato_ponoven_uvoz_csv(client):
     """DELETE-DATA: po /delete-data/execute morajo izginiti TUDI rekordi in štartne
     liste (ne ostanejo imena otrok), in ponovni CSV uvoz mora spet delovati.
@@ -215,13 +260,15 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
     # rekordi obstajajo (seed jih ustvari)
     rek = client.get("/records").json()
     assert rek, "seed mora imeti rekorde"
-    assert rek[0]["school_name"] is not None or "school_name" in rek[0], "Record.to_dict mora vsebovati school_name"
+    assert "school_name" in rek[0], "Record.to_dict mora vsebovati school_name"
+    rek_before = len(rek)
 
     d = client.post("/delete-data/execute")
     assert d.status_code == 200, d.text
     assert client.get("/pupils").json() == [], "pupils morajo izginiti"
     assert client.get("/events").json() == [], "events morajo izginiti"
-    assert client.get("/records").json() == [], "rekordi morajo izginiti (ne ostanejo imena otrok)"
+    # REKORDI OSTANEJO nedotaknjeni (samostojna tabela)
+    assert len(client.get("/records").json()) == rek_before, "rekordi morajo OSTATI po izbrisu (nedotaknjeni)"
     assert client.get("/start-lists").json() == [], "štartne liste morajo izginiti"
 
     # ponovni uvoz PO izbrisu mora spet uspeti (prej UNIQUE start_list_pupils -> 500)

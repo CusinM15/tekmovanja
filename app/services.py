@@ -16,6 +16,48 @@ from app.models import (
 )
 
 
+
+def _sync_records_after_result(db, discipline_id, grade, pupil, time):
+    """Avtomatsko posodobi tabele rekordov ob vpisu rezultata za (disciplina, razred):
+    - boljši čas -> nadomesti: stara vrstica z dosedanjim rekordom se izbriše;
+    - enak čas  -> nova vrstica (tie; ista disciplina ima lahko več vrstic);
+    - slabši    -> nič.
+    Rekordi so samostojna tabela (shranimo posnetek učenca), zato ob brisanju
+    učencev ostanejo nedotaknjeni."""
+    from app.models import Record
+    from datetime import datetime
+    if not grade or grade not in ("2.r", "3.r"):
+        return
+
+    def dodaj():
+        db.add(Record(
+            discipline_id=discipline_id,
+            pupil_id=pupil.id,
+            pupil_name=f"{pupil.first_name} {pupil.last_name}",
+            pupil_grade=grade,
+            school_name=pupil.school.name if pupil.school else None,
+            time=float(time),
+            date_recorded=datetime.utcnow(),
+        ))
+
+    canvas = db.query(Record).filter(
+        Record.discipline_id == discipline_id,
+        Record.pupil_grade == grade,
+    ).all()
+    if not canvas:
+        dodaj()
+        return
+    best = min(r.time for r in canvas)
+    if time < best - 1e-9:
+        for r in canvas:
+            db.delete(r)
+        dodaj()
+    elif abs(time - best) <= 1e-9:
+        # tie — nova vrstica, razen če isti učenec+čas že obstaja (ponovno shranjevanje)
+        if not any(r.pupil_id == pupil.id and abs(r.time - time) <= 1e-9 for r in canvas):
+            dodaj()
+    # slabši čas -> nič
+
 class SchoolService:
     model = School
 
@@ -251,9 +293,9 @@ class PupilService:
         p = db.query(Pupil).get(pupil_id)
         if not p:
             raise HTTPException(status_code=404, detail="Učenec ne obstaja.")
-        # izbriši njegove rezultate in rekorde, ohrani tuje
+        # izbriši njegove rezultate; REKORDE ohranimo (rekordi so samostojna tabela,
+        # shranijo posnetek učenca in preživijo brisanje učenca/podatkov)
         db.query(CompetitionEvent).filter(CompetitionEvent.pupil_id == pupil_id).delete()
-        db.query(Record).filter(Record.pupil_id == pupil_id).delete()
         # odstrani iz štartnih list
         for sl in db.query(StartList).all():
             if p in sl.pupils:
@@ -295,6 +337,8 @@ class EventService:
         ev = CompetitionEvent(pupil_id=pupil_id, discipline_id=discipline_id,
                               time=float(time), position=int(position), notes=notes)
         db.add(ev)
+        # avtomatska sinhronizacija rekordov (boljši/enak čas)
+        _try_sync(db, ev, pupil, discipline)
         db.commit()
         return ev.to_dict()
 
@@ -325,6 +369,7 @@ class EventService:
             ev.discipline_id = discipline_id
         from datetime import datetime
         ev.updated_at = datetime.utcnow()
+        _try_sync(db, ev, ev.pupil, ev.discipline)
         db.commit()
         return ev.to_dict()
 
@@ -338,6 +383,17 @@ class EventService:
         db.commit()
         return {"message": f"Rezultat {event_id} izbrisan."}
 
+
+
+def _try_sync(db, ev, pupil, discipline):
+    """Paket avtomatske sinhronizacije rekordov za dogodek; požre napake
+    (da se shranjevanje rezultata nikoli ne podre zaradi rekordov)."""
+    try:
+        if pupil is None or discipline is None:
+            return
+        _sync_records_after_result(db, discipline.id, pupil.grade, pupil, ev.time)
+    except Exception:
+        db.rollback()
 
 class RecordService:
     model = Record
@@ -356,6 +412,7 @@ class RecordService:
             raise HTTPException(status_code=404, detail="Disciplina ne obstaja.")
         if not db.query(Pupil).get(pupil_id):
             raise HTTPException(status_code=404, detail="Učenec ne obstaja.")
+        pupil = db.query(Pupil).get(pupil_id)
         rec_date = None
         if date_recorded:
             try:
@@ -364,6 +421,9 @@ class RecordService:
                 raise HTTPException(status_code=400, detail="Napačen datum, uporabi YYYY-MM-DD.")
         rec = Record(discipline_id=discipline_id, pupil_id=pupil_id, time=float(time),
                      date_recorded=rec_date or datetime.utcnow(),
+                     pupil_name=f"{pupil.first_name} {pupil.last_name}" if pupil else None,
+                     pupil_grade=pupil.grade if pupil else None,
+                     school_name=pupil.school.name if (pupil and pupil.school) else None,
                      notes=notes.strip() if notes else None)
         db.add(rec)
         db.commit()
@@ -396,6 +456,10 @@ class RecordService:
             if not db.query(Pupil).get(pupil_id):
                 raise HTTPException(status_code=404, detail="Učenec ne obstaja.")
             rec.pupil_id = pupil_id
+        pupil = rec.pupil
+        rec.pupil_name = f"{pupil.first_name} {pupil.last_name}" if pupil else None
+        rec.pupil_grade = pupil.grade if pupil else None
+        rec.school_name = pupil.school.name if (pupil and pupil.school) else None
         db.commit()
         return rec.to_dict()
 

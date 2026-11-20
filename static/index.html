@@ -681,7 +681,7 @@ function shraniVnosRezultatov(){
     if (i >= vrsta.length){
       toast('Rezultati shranjeni.', '');
       zapriVnosRezultatov();
-      natovoriDejavnost();
+      natovoriDejavnost(); natovoriRekorde();
       return;
     }
     var v = vrsta[i];
@@ -959,7 +959,7 @@ function shraniRezultat(id){
     : api('/events', 'POST', pod);
   zahteva.then(function(){
     toast(id ? 'Rezultat posodobljen.' : 'Rezultat dodan.', 'ok');
-    zapriModal(); natovoriRezultate(); natovoriPregled();
+    zapriModal(); natovoriRezultate(); natovoriPregled(); natovoriRekorde();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 

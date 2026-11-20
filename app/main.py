@@ -62,6 +62,21 @@ def _ensure_start_lists(db):
             db.add(nova)
 
 
+
+def _backfill_record_snapshots(db):
+    """V obstoječe rekorde zapiše posnetek učenca (ime/razred/šola) — da rekord
+    po brisanju učenca oz. podatkov še vedno pokaže ime. Idempotentno."""
+    changed = False
+    for r in db.query(Record).all():
+        if r.pupil and (not r.pupil_name or not r.pupil_grade):
+            r.pupil_name = f"{r.pupil.first_name} {r.pupil.last_name}"
+            r.pupil_grade = r.pupil.grade
+            r.school_name = r.pupil.school.name if r.pupil.school else None
+            changed = True
+    if changed:
+        db.commit()
+
+
 def _seed_defaults():
     """Ob prvem zagonu (prazna baza) napolni šole, discipline, učence in rekorde,
     da lahko uporabnik takoj preizkusi app. Če tabela že ima podatke, se ne dotika."""
@@ -215,6 +230,7 @@ def _seed_defaults():
         # Nedestruktivno: na OBSTOJEČI bazi (Windows) doda manjkajoče štartne liste,
         # da jih uporabnik dobi takoj po `git pull`, brez brisanja podatkov.
         _ensure_start_lists(db)
+        _backfill_record_snapshots(db)
         db.commit()
 
     except Exception as e:
@@ -995,8 +1011,8 @@ def delete_data(db=Depends(get_db)):
     
     return {
         "message": "Selective data deletion is available.\n"
-                   "This action will DELETE all Pupils, CompetitionEvents, Records and StartLists\n"
-                   "Schools and Disciplines will be preserved.\n"
+                   "This action will DELETE all Pupils, CompetitionEvents and StartLists\n"
+                   "Schools, Disciplines and Records (recordi) will be preserved.\n"
                    "To execute deletion, call /delete-data/execute endpoint.",
         "count_pupils": len(pupils),
         "count_events": len(events),
@@ -1023,21 +1039,21 @@ def execute_delete_data(db=Depends(get_db)):
     events = db.query(CompetitionEvent).all()
     records = db.query(Record).all()
     
-    if len(pupils) == 0 and len(events) == 0 and len(records) == 0:
+    if len(pupils) == 0 and len(events) == 0:
         return {"message": "No competition data to delete"}
     
-    # Delete
-    # Izbriši tudi odvisne vrstice (rekordi, štartne liste + članstva), da po
-    # izbrisu ne ostanejo imena otrok in se ne pokvari ponoven CSV uvoz.
+    # Izbriši učence, njihove rezultate in štartne liste (+ članstva), da po
+    # izbrisu ne ostanejo sirote v start_list_pupils in se ponoven CSV uvoz ne
+    # zruši (UNIQUE constraint). REKORDE OHRANIMO: rekordi so samostojna tabela
+    # (s posnetkom učenca), ki preživi izbris podatkov pred vsakim tekmovanjem.
     db.execute(text("DELETE FROM start_list_pupils"))
     db.query(StartList).delete()
-    db.query(Record).delete()
     db.query(CompetitionEvent).delete()
     db.query(Pupil).delete()
     db.commit()
     
     return {
-        "message": f"Successfully deleted {len(pupils)} pupil(s), {len(events)} event(s), {len(records)} record(s) and start lists."
+        "message": f"Successfully deleted {len(pupils)} pupil(s), {len(events)} event(s) and start lists. Records preserved."
     }
 
 # === UTILITIES ===

@@ -223,6 +223,11 @@ class Record(Base):
     time = Column(Float, nullable=False)
     date_recorded = Column(DateTime, default=datetime.utcnow, nullable=False)
     notes = Column(Text, nullable=True)
+    # Posnetek učenca ob nastanku rekorda — da rekord (samostojna tabela) preživi
+    # brisanje učencev oz. podatkov in še vedno pokaže ime/razred/šolo.
+    pupil_name = Column(String, nullable=True)
+    pupil_grade = Column(String, nullable=True)
+    school_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     pupil = relationship("Pupil")
@@ -234,9 +239,9 @@ class Record(Base):
             "discipline_id": self.discipline_id,
             "discipline_name": self.discipline.name if self.discipline else None,
             "pupil_id": self.pupil_id,
-            "pupil_name": f"{self.pupil.first_name} {self.pupil.last_name}" if self.pupil else None,
-            "pupil_grade": self.pupil.grade if self.pupil else None,
-            "school_name": (self.pupil.school.name if self.pupil and self.pupil.school else None),
+            "pupil_name": self.pupil_name or (f"{self.pupil.first_name} {self.pupil.last_name}" if self.pupil else None),
+            "pupil_grade": self.pupil_grade or (self.pupil.grade if self.pupil else None),
+            "school_name": self.school_name or (self.pupil.school.name if self.pupil and self.pupil.school else None),
             "time": self.time,
             "date_recorded": self.date_recorded.isoformat() if self.date_recorded else None,
             "notes": self.notes,
