@@ -702,7 +702,7 @@ def send_invitations_emails(db=Depends(get_db)):
         return {"message": "No active schools found"}
     
     subject = "Uporaba tekmovanja - sh registers"
-    sender = app_config.smtp_user if app_config.smtp_user else "tekmovanja@arne.gov.si"
+    sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
     recipients = [s.email for s in active_schools]
     
     # Build message
@@ -989,7 +989,7 @@ def email_results(
     active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     
     subject = "Rezultati tekmovanja"
-    sender = app_config.smtp_user if app_config.smtp_user else "tekmovanja@arne.gov.si"
+    sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
     
     body = "Prišli so rezultati tekmovanja.\n\n" \
            "Sodobna tekmovanja se izvedejo. Prosimo, prebrati rezultate in vprašati v primeru napake.\n\n" \
@@ -1283,11 +1283,13 @@ def save_smtp_settings(
     port: int = Form(587),
     user: str = Form(...),
     password: str = Form(...),
+    from_addr: str = Form(None),
     db=Depends(get_db)
 ):
     """Save SMTP credentials (stored locally, never in git)."""
     app_config.smtp_host = host.strip()
     app_config.smtp_port = port
+    app_config.smtp_from = (from_addr or "").strip() or None
     app_config.set_smtp_credentials(user.strip(), password)
     return {"message": "Nastavitve e-pošte so shranjene."}
 

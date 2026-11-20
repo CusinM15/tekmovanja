@@ -1153,8 +1153,15 @@ function prenesiPredlogaCsv(){
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'predloga_ucenci.csv';
+    // a mora biti v DOM-u, sicer Firefox/LibreWolf programski a.click()
+    // tiho ignorira download (Chromium je bil tolerantnejši).
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(function(){
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }, 1000);
     toast('Predloga pripravljena za prenos.', 'ok');
   }).catch(function(e){ toast('Napaka pri prenosu predloge: ' + e.message, 'napaka'); });
 }
@@ -1207,6 +1214,7 @@ function odpriModalSmtp(){
     '<div class="polje"><label>Strežnik (SMTP)</label><input id="f-smtp-host" value="smtp.arne.gov.si"></div>' +
     '<div class="polje"><label>Vrata</label><input id="f-smtp-port" type="number" value="587"></div>' +
     '<div class="polje"><label>Uporabniško ime (e-pošta)</label><input id="f-smtp-user"></div>' +
+    '<div class="polje"><label>Naslov pošiljatelja (From)</label><input id="f-smtp-from" placeholder="npr. admin@sole.si"></div>' +
     '<div class="polje"><label>Geslo</label><input id="f-smtp-pass" type="password"></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -1220,7 +1228,8 @@ function shraniSmtp(){
     host: $('f-smtp-host').value.trim(),
     port: parseInt($('f-smtp-port').value, 10) || 587,
     user: $('f-smtp-user').value.trim(),
-    password: $('f-smtp-pass').value
+    password: $('f-smtp-pass').value,
+    from_addr: $('f-smtp-from').value.trim()
   };
   if (!pod.user || !pod.password){ toast('Vnesite uporabniško ime in geslo.', 'napaka'); return; }
   api('/api/smtp', 'POST', pod).then(function(r){

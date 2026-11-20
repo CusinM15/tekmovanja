@@ -15,6 +15,7 @@ DEFAULT_CONFIG = {
         "port": 587,
         "user": None,
         "password": None,
+        "from": None,                # Naslov pošiljatelja (From) — dejanski e-naslov
         "tls": True,
     },
     "database": {
@@ -55,6 +56,7 @@ class AppConfig:
     smtp_port: int = 587
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None   # Naslov pošiljatelja (From) — dejanski e-naslov
     smtp_tls: bool = True
     
     # Schools
@@ -93,6 +95,14 @@ class AppConfig:
                 
                 # Override with current instance values
                 config["smtp"] = {**config.get("smtp", {}), **self._get_smtp_dict()}
+                # Naložimo shranjene SMTP vrednosti nazaj v instanco, da prežive
+                # restart (user/password/from so v config.json, nikoli v gitu).
+                _s = data.get("smtp", {})
+                if _s.get("user"): self.smtp_user = _s["user"]
+                if _s.get("password"): self.smtp_password = _s["password"]
+                self.smtp_from = (_s.get("from") or "").strip() or None
+                if _s.get("host"): self.smtp_host = _s["host"]
+                if _s.get("port"): self.smtp_port = int(_s["port"])
                 # school settings merge logic
                 # discipline settings merge logic
                 # We'll keep it simple for now
@@ -115,6 +125,7 @@ class AppConfig:
             "port": self.smtp_port,
             "user": self.smtp_user,
             "password": self.smtp_password,
+            "from": self.smtp_from,
             "tls": self.smtp_tls,
         }
     
@@ -145,6 +156,7 @@ class AppConfig:
             "port": self.smtp_port,
             "user": self.smtp_user,
             "password": self.smtp_password,
+            "from": self.smtp_from,
             "tls": self.smtp_tls,
         }
     
