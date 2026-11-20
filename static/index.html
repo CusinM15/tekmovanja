@@ -195,6 +195,13 @@
       </div>
       <div class="kartice" id="rz-kartice"></div>
       <div class="prazno" id="prazno-rezultati" style="display:none">Ni še rezultatov. Najprej jih vnesite v disciplinah.</div>
+      <h3 style="margin-top:30px">🏅 Šole po točkah</h3>
+      <p class="opis">Seštevek točk po šolah iz vseh rezultatov (1. mesto=15, 2.=12, 3.=10, ... 12.=1 točka).</p>
+      <table class="sortable" id="tabela-tocke-sole" style="max-width:520px">
+        <thead><tr><th>#</th><th>Šola</th><th>Točke</th></tr></thead>
+        <tbody id="tocke-sole-body"></tbody>
+      </table>
+      <div class="prazno" id="prazno-tocke-sole" style="display:none">Ni še rezultatov za razvrstitev šol.</div>
     </div>
 
     <div id="rz-detail" style="display:none">
@@ -681,7 +688,7 @@ function shraniVnosRezultatov(){
     if (i >= vrsta.length){
       toast('Rezultati shranjeni.', '');
       zapriVnosRezultatov();
-      natovoriDejavnost(); natovoriRekorde();
+      natovoriDejavnost(); natovoriRekorde(); natovoriTockeSole();
       return;
     }
     var v = vrsta[i];
@@ -774,6 +781,7 @@ function natovoriRezultate(){
     // odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
     api('/pupils').then(function(ucenci){
       izrisiKarticeRezultati(disc, ucenci || []);
+      natovoriTockeSole();
     }).catch(function(){
       izrisiKarticeRezultati(disc, []);
       toast('Učenci niso na voljo — N prikazan kot 0.', 'napaka');
@@ -792,6 +800,19 @@ function stejUcenceDiscipline(ucenci, d, razred){
     n++;
   }
   return n;
+}
+
+
+function natovoriTockeSole(){
+  api('/school-points').then(function(p){
+    var vrstice = '';
+    for (var i = 0; i < p.length; i++){
+      vrstice += '<tr><td><strong>' + (i + 1) + '</strong></td><td><strong>' + esc(p[i].school_name) + '</strong></td><td><strong>' + p[i].points + '</strong></td></tr>';
+    }
+    $('tocke-sole-body').innerHTML = vrstice;
+    $('tabela-tocke-sole').style.display = p.length ? '' : 'none';
+    $('prazno-tocke-sole').style.display = p.length ? 'none' : 'block';
+  }).catch(function(e){});
 }
 
 function izrisiKarticeRezultati(disc, ucenci){
@@ -932,7 +953,6 @@ function odpriModalRezultat(id, predDisciplina, predUcenec){
       '<div class="polje"><label>Učenec</label><select id="f-r-ucenec">' + opcijeU + '</select></div>' +
       '<div class="polje"><label>Disciplina</label><select id="f-r-disciplina">' + opcijeD + '</select></div>' +
       '<div class="polje"><label>Čas (v sekundah, npr. 12,5 ali 10.23)</label><input id="f-r-cas" value="' + esc(dogodek ? String(dogodek.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
-      '<div class="polje"><label>Mesto (1–30)</label><input id="f-r-mesto" type="number" min="1" max="30" value="' + esc(dogodek && dogodek.position != null ? dogodek.position : '') + '"></div>' +
       '<div class="polje"><label>Opombe (neobvezno)</label><textarea id="f-r-opombe" rows="2">' + esc(dogodek ? dogodek.notes || '' : '') + '</textarea></div>' +
       '<div class="modal-gumbi">' +
         '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -944,14 +964,11 @@ function odpriModalRezultat(id, predDisciplina, predUcenec){
 
 function shraniRezultat(id){
   var cas = parseFloat(($('f-r-cas').value || '').replace(',', '.'));
-  var mesto = parseInt($('f-r-mesto').value, 10);
   if (isNaN(cas) || cas < 0){ toast('Vnesite veljaven čas.', 'napaka'); return; }
-  if (isNaN(mesto) || mesto < 1 || mesto > 30){ toast('Vnesite mesto med 1 in 30.', 'napaka'); return; }
   var pod = {
     pupil_id: parseInt($('f-r-ucenec').value, 10),
     discipline_id: parseInt($('f-r-disciplina').value, 10),
     time: cas,
-    position: mesto,
     notes: $('f-r-opombe').value.trim() || null
   };
   var zahteva = id

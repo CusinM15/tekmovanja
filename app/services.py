@@ -58,6 +58,46 @@ def _sync_records_after_result(db, discipline_id, grade, pupil, time):
             dodaj()
     # slabši čas -> nič
 
+
+TOČKE_PO_MESTU = {1: 15, 2: 12, 3: 10, 4: 9, 5: 8, 6: 7, 7: 6, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1}
+
+
+def points_for_position(position):
+    """Točke za šolo glede na mesto (1.=15, 2.=12, ..., 12.=1; naprej 0)."""
+    try:
+        return TOČKE_PO_MESTU.get(int(position), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _reassign_positions_for(db, discipline_id, grade):
+    """Mesto se določi SAMODEJNO glede na čas znotraj (disciplina, razred):
+    hitrejši čas = boljše mesto; izenačen čas = isti mesto (competition ranking)."""
+    from app.models import CompetitionEvent, Pupil
+    if not grade or grade not in ("2.r", "3.r"):
+        return
+    evts = db.query(CompetitionEvent).join(CompetitionEvent.pupil).filter(
+        CompetitionEvent.discipline_id == discipline_id,
+        Pupil.grade == grade,
+    ).order_by(CompetitionEvent.time.asc(), CompetitionEvent.id.asc()).all()
+    prev = None
+    mesto = 0
+    for idx, ev in enumerate(evts, start=1):
+        if prev is None or abs(ev.time - prev) > 1e-9:
+            mesto = idx
+        ev.position = mesto
+        prev = ev.time
+
+
+def _reassign_all_positions(db):
+    """Preračuna mesta za VSE (disciplina, razred) — backfill ob zagonu."""
+    from app.models import CompetitionEvent, Pupil
+    combos = db.query(CompetitionEvent.discipline_id, Pupil.grade)\
+        .join(CompetitionEvent.pupil).distinct().all()
+    for dis_id, grade in combos:
+        _reassign_positions_for(db, dis_id, grade)
+
+
 class SchoolService:
     model = School
 
@@ -313,13 +353,13 @@ class EventService:
         return [e.to_dict() for e in db.query(CompetitionEvent).all()]
 
     @staticmethod
-    def create(db: Session, pupil_id, discipline_id, time, position, notes=None) -> dict:
+    def create(db: Session, pupil_id, discipline_id, time, position=None, notes=None) -> dict:
         from fastapi import HTTPException
+        if time is None:
+            raise HTTPException(status_code=400, detail="Čas je obvezen.")
         err = CompetitionEvent.validate(time, position)
         if err:
             raise HTTPException(status_code=400, detail=err)
-        if time is None or position is None:
-            raise HTTPException(status_code=400, detail="Čas in mesto sta obvezna.")
         pupil = db.query(Pupil).get(pupil_id)
         if not pupil:
             raise HTTPException(status_code=404, detail="Učenec ne obstaja.")
@@ -335,8 +375,13 @@ class EventService:
                     detail=f"Disciplina '{discipline.name}' ni primerna za razred {pupil.grade}",
                 )
         ev = CompetitionEvent(pupil_id=pupil_id, discipline_id=discipline_id,
-                              time=float(time), position=int(position), notes=notes)
+                              time=float(time),
+                              position=int(position) if position is not None else 0,
+                              notes=notes)
         db.add(ev)
+        db.flush()
+        # Mesto določi samodejno po času znotraj (disciplina, razred)
+        _reassign_positions_for(db, discipline_id, pupil.grade)
         # avtomatska sinhronizacija rekordov (boljši/enak čas)
         _try_sync(db, ev, pupil, discipline)
         db.commit()
@@ -369,6 +414,7 @@ class EventService:
             ev.discipline_id = discipline_id
         from datetime import datetime
         ev.updated_at = datetime.utcnow()
+        _reassign_positions_for(db, ev.discipline_id, ev.pupil.grade if ev.pupil else None)
         _try_sync(db, ev, ev.pupil, ev.discipline)
         db.commit()
         return ev.to_dict()
@@ -379,7 +425,10 @@ class EventService:
         ev = db.query(CompetitionEvent).get(event_id)
         if not ev:
             raise HTTPException(status_code=404, detail="Rezultat ne obstaja.")
+        dis_id = ev.discipline_id
+        grade = ev.pupil.grade if ev.pupil else None
         db.delete(ev)
+        _reassign_positions_for(db, dis_id, grade)
         db.commit()
         return {"message": f"Rezultat {event_id} izbrisan."}
 

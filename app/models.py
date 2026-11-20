@@ -201,10 +201,10 @@ class CompetitionEvent(Base):
         }
 
     @staticmethod
-    def validate(time, position) -> Optional[str]:
+    def validate(time, position=None) -> Optional[str]:
         if time is None or time < 0:
             return "Čas mora biti pozitivno število."
-        if position is None or not 1 <= position <= 30:
+        if position is not None and not 1 <= position <= 30:
             return "Mesto mora biti med 1 in 30."
         return None
 

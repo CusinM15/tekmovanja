@@ -231,6 +231,8 @@ def _seed_defaults():
         # da jih uporabnik dobi takoj po `git pull`, brez brisanja podatkov.
         _ensure_start_lists(db)
         _backfill_record_snapshots(db)
+        from app.services import _reassign_all_positions
+        _reassign_all_positions(db)
         db.commit()
 
     except Exception as e:
@@ -429,6 +431,20 @@ def record_event(
 def list_events(db=Depends(get_db)):
     """List all events."""
     return EventService.all(db)
+
+
+@app.get("/school-points", response_model=List[dict], summary="Točke po šolah")
+def school_points(db=Depends(get_db)):
+    """Seštevek točk po šolah iz VSEH rezultatov (1. mesto=15, 2.=12, ..., 12.=1)."""
+    from app.services import points_for_position
+    pts = {}
+    for ev in db.query(CompetitionEvent).all():
+        if not ev.pupil or not ev.pupil.school:
+            continue
+        sid = ev.pupil.school.id
+        row = pts.setdefault(sid, {"school_id": sid, "school_name": ev.pupil.school.name, "points": 0})
+        row["points"] += points_for_position(ev.position)
+    return sorted(pts.values(), key=lambda x: (-x["points"], x["school_name"]))
 
 # === RECORD MANAGEMENT ===
 

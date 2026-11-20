@@ -249,6 +249,35 @@ def test_avtomatizirani_rekordi_ob_vpisu_rezultata(client):
            if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
     assert len(od3) == 2, f"slabši -> nespremenjeno: {od3}"
 
+def test_avtomatsko_mesto_in_tocke_po_solah(client):
+    """Mesto se določi SAMODEJNO ob vpisu rezultata (uporabnik ga ne vpisuje);
+    /school-points sešteje točke po šolah (1.=15, 2.=12, ..., 12.=1)."""
+    # nova disciplina (2.r fantje), da ne vplivamo na seed
+    nd = client.post("/disciplines", data={"name": "TEST 100m ♂", "gender": "M",
+                                           "applicable_grades": "2.r"}).json()
+    did = nd["id"]
+    us = [u for u in client.get("/pupils").json() if u["grade"] == "2.r" and u["gender"] == "M"]
+    u0 = us[0]
+    u1 = next(u for u in us if u["school_id"] != u0["school_id"])
+
+    before = {x["school_name"]: x["points"] for x in client.get("/school-points").json()}
+
+    # počasnejši najprej -> samodejno 1. mesto
+    e1 = client.post("/events", data={"pupil_id": u0["id"], "discipline_id": did,
+                                      "time": 15.0}).json()
+    assert e1["position"] == 1, e1
+    # hitrejši -> 1., prejšnji postane 2.
+    e2 = client.post("/events", data={"pupil_id": u1["id"], "discipline_id": did,
+                                      "time": 12.0}).json()
+    assert e2["position"] == 1, e2
+    e1_po = [e for e in client.get("/events").json() if e["id"] == e1["id"]][0]
+    assert e1_po["position"] == 2, "po hitrejšem mora prvi postati 2. mesto"
+
+    after = {x["school_name"]: x["points"] for x in client.get("/school-points").json()}
+    n = lambda nm: after.get(nm, 0) - before.get(nm, 0)
+    assert n(u0["school_name"]) == 12, f"šola 2. mesta mora dobiti 12 točk (dobil {n(u0['school_name'])})"
+    assert n(u1["school_name"]) == 15, f"šola 1. mesta mora dobiti 15 točk (dobil {n(u1['school_name'])})"
+
 def test_delete_data_nato_ponoven_uvoz_csv(client):
     """DELETE-DATA: po /delete-data/execute morajo izginiti TUDI rekordi in štartne
     liste (ne ostanejo imena otrok), in ponovni CSV uvoz mora spet delovati.
@@ -277,3 +306,4 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
     j2 = r2.json()
     assert j2["status"] == "success", j2
     assert j2["records_created"] == 1, j2
+
