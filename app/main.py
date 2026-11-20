@@ -941,7 +941,7 @@ def email_results(
     db=Depends(get_db)
 ):
     """Generate results PDF and email to active schools."""
-    from app.utils import generate_results_pdf, send_email
+    from app.utils import results_pdf_bytes, send_email
     
     # Get all events (db prihaja prek Depends — samodejno zaprt)
     db_session = db
@@ -950,8 +950,8 @@ def email_results(
     if not events:
         return {"message": "No events to include in results"}
     
-    # Generate PDF (HTML for now)
-    pdf_html = generate_results_pdf(events=events)  # returns HTML
+    # Pravi PDF (reportlab) — pravilen encoding + pošlje dejanske bajte PDF
+    pdf = results_pdf_bytes(events, title="Tekmovanja — rezultati")
     
     # Get active schools
     active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
@@ -969,7 +969,7 @@ def email_results(
             sender=sender,
             recipients=[s.email for s in active_schools],
             body=body,
-            attachments=[("results.pdf", pdf_html, "application/pdf")],
+            attachments=[("results.pdf", pdf, "application/pdf")],
         )
     except Exception as e:
         print(f"Email error: {e}")

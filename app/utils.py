@@ -238,11 +238,14 @@ def generate_results_pdf(events, discipline_id=None, school_id=None):
 # === PRAVI PDF (reportlab) ===
 
 def _slovene_font():
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
+    """Poišče UniCode TrueType pisavo (DejaVuSans — ima Š Ž Č in ♂ ♀).
+    Najprej repo-vgrajena (static/fonts/DejaVuSans.ttf — deluje tudi na Windowsu),
+    nato sistemski DejaVu, nazadnje Windows Arial. Vrne pot ali None."""
     import os
-    # Poskusi DejaVu (ima ŠŽČ), drugače Helvetica
+    from pathlib import Path
+    repo_font = Path(__file__).resolve().parent.parent / "static" / "fonts" / "DejaVuSans.ttf"
     kandidati = [
+        str(repo_font),
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
@@ -255,14 +258,30 @@ def _slovene_font():
 
 
 def _reg_fonts():
+    """Registrira in vrne ime UniCode pisave za PDF-je.
+    Z DejaVuSans so š/ž/č in ♂/♀ v PDF-jih popolno prikazani tudi na Windowsu
+    (prej je tam padel na Helvetica in se znaki pokvarili)."""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     f = _slovene_font()
-    if f and "DejaVu" in f:
-        if "DejaVuSans" not in [x.faceName for x in pdfmetrics.getRegisteredFontNames()] if False else "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+    if not f or "DejaVu" not in f:
+        return "Helvetica"
+    if "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+        try:
             pdfmetrics.registerFont(TTFont("DejaVuSans", f))
-        return "DejaVuSans"
-    return "Helvetica"
+        except Exception:
+            return "Helvetica"
+    return "DejaVuSans"
+
+
+def _cell_par(text, font, size=10):
+    """Besedilo v Paragraph — znotraj celice se lepo zvije (imena/šole ne prelijejo)
+    in uporabi pravi UniCode font (š/ž/č/♂/♀)."""
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph
+    st = ParagraphStyle("cellpar", fontName=font, fontSize=size,
+                        leading=size * 1.3)
+    return Paragraph(text if text is not None else "", st)
 
 
 def results_pdf_bytes(events, title="Tekmovanja — rezultati"):
@@ -294,20 +313,21 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati"):
         pupil = ev.pupil
         disc = ev.discipline
         data.append([
-            f"{pupil.first_name} {pupil.last_name}" if pupil else "—",
-            pupil.grade if pupil else "",
-            disc.name if disc else "—",
-            f"{ev.time:.2f}" if ev.time is not None else "",
-            str(ev.position) if ev.position is not None else "",
-            (ev.notes or "") or "",
+            _cell_par(f"{pupil.first_name} {pupil.last_name}" if pupil else "—", font, size=9),
+            _cell_par(pupil.grade if pupil else "", font, size=9),
+            _cell_par(disc.name if disc else "—", font, size=9),
+            _cell_par(f"{ev.time:.2f}" if ev.time is not None else "", font, size=9),
+            _cell_par(str(ev.position) if ev.position is not None else "", font, size=9),
+            _cell_par((ev.notes or "") or "", font, size=9),
         ])
     if len(data) == 1:
-        data.append(["Ni še vnesenih rezultatov.", "", "", "", "", ""])
+        data.append([_cell_par("Ni še vnesenih rezultatov.", font, size=9)]
+                    + [_cell_par("", font, size=9) for _ in range(5)])
 
-    t = Table(data, repeatRows=1, colWidths=[4.2 * cm, 1.8 * cm, 4.5 * cm, 2.8 * cm, 1.6 * cm, 2.8 * cm])
+    # Širine seštevek <= ~17 cm (A4 brez robov) — učenci/opombe se zvijejo znotraj celice.
+    t = Table(data, repeatRows=1, colWidths=[3.8 * cm, 1.5 * cm, 4.2 * cm, 2.6 * cm, 1.5 * cm, 2.6 * cm])
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, 0), font),
-        ("FONTNAME", (0, 1), (-1, -1), font),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
@@ -350,18 +370,21 @@ def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
     data = [["#", "Učenec", "Razred", "Šola", "Rezultat"]]
     for i, pupil in enumerate(pupils, start=1):
         data.append([
-            str(i),
-            f"{pupil.first_name} {pupil.last_name}",
-            pupil.grade or "",
-            pupil.school.name if pupil.school else "",
-            "",  # prostor za vpis rezultata
+            _cell_par(str(i), font),
+            _cell_par(f"{pupil.first_name} {pupil.last_name}", font),
+            _cell_par(pupil.grade or "", font),
+            # Šola razširjena + Paragraph: "OŠ Josipa Vandota Kranjska Gora" se
+            # zlomi znotraj celice in ne prelije čez rob.
+            _cell_par(pupil.school.name if pupil.school else "", font),
+            _cell_par("", font),  # prostor za vpis rezultata
         ])
     if len(data) == 1:
-        data.append(["1", "Ni učencev na listi.", "", "", ""])
+        data.append([_cell_par("1", font), _cell_par("Ni učencev na listi.", font),
+                     _cell_par("", font), _cell_par("", font), _cell_par("", font)])
 
-    t = Table(data, repeatRows=1, colWidths=[1.0 * cm, 5.8 * cm, 1.8 * cm, 5.4 * cm, 3.0 * cm])
+    t = Table(data, repeatRows=1, colWidths=[1.0 * cm, 5.0 * cm, 1.6 * cm, 6.4 * cm, 3.0 * cm])
     t.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), font),
+        ("FONTNAME", (0, 0), (-1, 0), font),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
