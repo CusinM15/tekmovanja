@@ -42,7 +42,7 @@ def get_engine():
             echo=False,
             future=True,
             poolclass=NullPool,
-            connect_args={"check_same_thread": False},
+            connect_args={"check_same_thread": False, "timeout": 30},  # 30s čakanja na ključavnico (SQLite busy)
         )
     return _engine
 

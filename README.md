@@ -104,8 +104,14 @@ in po koncu tekmovanja še **rezultate**.
 2. Predlogo pošljete šolam; one jo izpolnijo in vrnejo.
 3. Izpolnjeno datoteko uvozite z **📄 Uvozi izpolnjeno CSV**.
 
-Stolpci: `First Name, Last Name, School, Grade, Gender`
+Stolpci: `First Name, Last Name, School, Grade, Gender, Discipline (ID)`
 (razred: `2.r` ali `3.r`, spol: `M` ali `Ž`).
+
+V stolpec **Discipline (ID)** šola vpiše **ID discipline** iz tabele na vrhu
+predloge (npr. `1` za tek 60 m — fantje); en učenec je lahko v več disciplinah
+(loči z razmikom, npr. `1 3`). Uvoz učencev samodejno vpiše tudi na štartne
+liste — nastopi se potem vidijo v karticah na zavihku **Rezultati** kot `x/N`
+(x = učenci z rezultatom, N = vsi nastopajoči za tisti razred).
 
 ---
 

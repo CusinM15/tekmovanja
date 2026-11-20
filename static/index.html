@@ -46,6 +46,8 @@
   .kartica{background:var(--modra-svetla);border-radius:12px;padding:18px;text-align:center;}
   .kartica .stevilo{font-size:34px;font-weight:700;color:var(--modra);}
   .kartica .ime{font-size:14px;color:var(--siva);margin-top:4px;}
+  .kartica .razred{font-size:15px;color:var(--siva);margin-top:3px;font-weight:600;}
+  .kartica .razred strong{font-size:21px;color:var(--modra);font-weight:700;}
   .kartica.zelena{background:var(--zelen-svetla);} .kartica.zelena .stevilo{color:var(--zelen);}
   .kartica.orange{background:var(--oranzna-svetla);} .kartica.orange .stevilo{color:var(--oranzna);}
   .kartica.rdeca{background:var(--rdeca-svetla);} .kartica.rdeca .stevilo{color:var(--rdeca);}
@@ -764,19 +766,39 @@ var REZULTATI_DOGODKI = [];
 var REZULTATI_AKTIVNA = null;   // id discipline, ki je odprta v podpogledu (null = pregled)
 
 function natovoriRezultate(){
-  return Promise.all([api('/events'), api('/disciplines')]).then(function(rez){
+  return Promise.all([api('/events'), api('/disciplines'), api('/start-lists')]).then(function(rez){
     REZULTATI_DOGODKI = rez[0];
     var disc = rez[1];
+    var starti = rez[2] || [];
     VSE_DISCIPLINE = disc;
-    // Pregled: kartica za vsako disciplino + število rezultatov
+    // Nastopajoči po disciplini in razredu (edinstveni učenci s štartnih list)
+    var nastopi = {}; // disc_id -> { '2.r': {pupil_id: true}, '3.r': {...} }
+    for (var si = 0; si < starti.length; si++){
+      var sl = starti[si];
+      if (!nastopi[sl.discipline_id]) nastopi[sl.discipline_id] = {};
+      if (!nastopi[sl.discipline_id][sl.grade]) nastopi[sl.discipline_id][sl.grade] = {};
+      var mnozica = nastopi[sl.discipline_id][sl.grade];
+      var ucenciSL = sl.pupils || [];
+      for (var pi = 0; pi < ucenciSL.length; pi++) mnozica[ucenciSL[pi].id] = true;
+    }
+    // Pregled: kartica za vsako disciplino, v dveh vrsticah x/N (x=rezultat, N=nastopajoči)
     var kartice = '';
     for (var i = 0; i < disc.length; i++){
       var d = disc[i];
-      var st = 0;
-      for (var j = 0; j < REZULTATI_DOGODKI.length; j++) if (REZULTATI_DOGODKI[j].discipline_id === d.id) st++;
+      var zRez2 = {}, zRez3 = {};
+      for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+        var e = REZULTATI_DOGODKI[j];
+        if (e.discipline_id !== d.id) continue;
+        if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
+        else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
+      }
+      var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+      var N2 = (nastopi[d.id] && nastopi[d.id]['2.r']) ? Object.keys(nastopi[d.id]['2.r']).length : 0;
+      var N3 = (nastopi[d.id] && nastopi[d.id]['3.r']) ? Object.keys(nastopi[d.id]['3.r']).length : 0;
       kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
-        '<div class="stevilo">' + st + '</div>' +
-        '<div class="ime">' + esc(d.name) + '</div></div>';
+        '<div class="ime">' + esc(d.name) + '</div>' +
+        '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
+        '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
     }
     $('rz-kartice').innerHTML = kartice;
     $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
@@ -1081,23 +1103,31 @@ function izbrisiStartno(id){
 }
 
 /* ================= CSV / POŠTA / SMTP ================= */
-function prenesiPredlogoCsv(){
+function prenesiPredlogaCsv(){
   // BOM (\ufeff) na začetku: Excel potem pravilno odpre UTF-8 in Š/Ž/Č niso pokvarjeni.
-  var vsebina = '\ufeffFirst Name,Last Name,School,Grade,Gender\n' +
-    'Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž)\n';
-  var blob = new Blob([vsebina], {type: 'text/csv;charset=utf-8'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'predloga_ucenci.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  toast('Predloga pripravljena za prenos.', 'ok');
+  api('/disciplines').then(function(disc){
+    var legenda = 'ID,Disciplina (za koga)\n';
+    for (var i = 0; i < disc.length; i++){
+      var d = disc[i];
+      legenda += d.id + ',' + d.name + ' (' + (d.gender === 'M' ? 'fantje' : 'punce') + ')\n';
+    }
+    var vsebina = '\ufeff' + legenda + '\n' +
+      'First Name,Last Name,School,Grade,Gender,Discipline (ID)\n' +
+      'Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)\n';
+    var blob = new Blob([vsebina], {type: 'text/csv;charset=utf-8'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'predloga_ucenci.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Predloga pripravljena za prenos.', 'ok');
+  }).catch(function(e){ toast('Napaka pri prenosu predloge: ' + e.message, 'napaka'); });
 }
 
 function odpriModalUvozCsv(){
   $('modal-vsebina').innerHTML =
     '<h3>📄 Uvoz učencev iz CSV</h3>' +
-    '<div class="info">Izberite izpolnjeno CSV datoteko, ki so jo vrnile šole. Stolpci: First Name, Last Name, School, Grade, Gender.</div>' +
+    '<div class="info">Izberite izpolnjeno CSV datoteko, ki so jo vrnile šole. Stolpci: First Name, Last Name, School, Grade, Gender, Discipline (ID iz tabele v predlogi).</div>' +
     '<div class="polje"><label>CSV datoteka</label><input id="f-csv" type="file" accept=".csv,text/csv"></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -1117,7 +1147,7 @@ function uvoziCsv(){
     if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
     toast(besedilo, sp);
     zapriModal();
-    natovoriUcence(); natovoriPregled();
+    natovoriUcence(); natovoriPregled(); natovoriStartne(); natovoriRezultate();
   }).catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }
 

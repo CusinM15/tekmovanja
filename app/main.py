@@ -601,20 +601,28 @@ def generate_csv_template():
     """Generate blank CSV template for school data collection."""
     # CSV header based on required fields from documents
     # Based on prompt: "attach a blank CSV template" and "explain how to fill it in"
-    csv_content = "\ufeffFirst Name,Last Name,School,Grade,Gender\n" \
-                  "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž)\n"
+    # ID tabela disciplin (iz baze, da so ID-ji vedno pravilni) — šole vpisujejo ID discipline
+    db = get_session()
+    try:
+        disc = db.query(Discipline).order_by(Discipline.id).all()
+        active_schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
+    finally:
+        db.close()
+
+    legenda = "ID,Disciplina (za koga)\n"
+    for d in disc:
+        spol = "fantje" if d.gender == "M" else "punce"
+        legenda += f"{d.id},{d.name} ({spol})\n"
+    legenda += "\n"
+
+    csv_content = "\ufeff" + legenda + \
+                  "First Name,Last Name,School,Grade,Gender,Discipline (ID)\n" \
+                  "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)\n"
     
     # For file download
     from fastapi import File, UploadFile, Form
     # Return JSON with file path? In real app, serve as downloadable file
     # We'll just return as JSON for now; in production would serve file
-    
-    # Get active schools for email
-    db = get_session()
-    try:
-        active_schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
-    finally:
-        db.close()
     
     csv_info = {
         "template": csv_content,
@@ -675,8 +683,9 @@ async def import_csv(
     db=Depends(get_db)
 ):
     """Import CSV file with competition data. Validates and prevents duplicates."""
-    if file.content_type != "text/csv":
-        raise HTTPException(status_code=400, detail="File must be CSV")
+    # Brskalniki pošljejo text/csv; Excel/Windows včasih druge MIME tipe — sprejmi vse običajne
+    if file.content_type not in ("text/csv", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Datoteka ni CSV (content-type: {})".format(file.content_type))
     
     # Read file content
     content = await file.read()
@@ -705,8 +714,13 @@ async def import_csv(
             header_idx = idx
             break
     if header_idx is None:
-        raise HTTPException(status_code=400, detail="CSV manjka glava: First Name, Last Name, School, Grade, Gender")
-    headers = [h.strip().lower() for h in rows[header_idx]]
+        raise HTTPException(status_code=400, detail="CSV manjka glava: First Name, Last Name, School, Grade, Gender, Discipline (ID)")
+
+    # Headerji poenoteni: mala črka, brez oklepajev (npr. "Discipline (ID)" -> "discipline")
+    def _norm(h):
+        return h.strip().lower().split("(")[0].strip()
+
+    headers = [_norm(h) for h in rows[header_idx]]
 
     def col(key):
         try:
@@ -716,12 +730,17 @@ async def import_csv(
 
     idx_first = col("first name"); idx_last = col("last name")
     idx_school = col("school"); idx_grade = col("grade"); idx_gender = col("gender")
+    idx_disc = col("discipline")
     if -1 in (idx_first, idx_last):
         raise HTTPException(status_code=400, detail="CSV manjka stolpca 'First Name' ali 'Last Name'")
 
+    import re
+    from datetime import datetime as _dt_now
     errors = []
     records = []
-    
+    start_entries = 0
+    start_lists_created = 0
+
     # Preskoči glavo in slovenski primer vrstico ("Ime,Priimek,Šola...")
     data_rows = rows[header_idx+1:]
     for i, row in enumerate(data_rows, start=header_idx+2):
@@ -734,30 +753,43 @@ async def import_csv(
         if len(row) < 2:  # at least First Name and Last Name
             errors.append(f"Vrstica {i}: premalo stolpcev")
             continue
-        
+
         # Extract field values
         first_name = row[idx_first].strip()
         last_name = (row[idx_last].strip() if idx_last >= 0 and idx_last < len(row) else "")
         school_name = (row[idx_school].strip() if idx_school >= 0 and idx_school < len(row) else "")
         grade = (row[idx_grade].strip() if idx_grade >= 0 and idx_grade < len(row) else "")
         gender = (row[idx_gender].strip() if idx_gender >= 0 and idx_gender < len(row) else "").upper()
-        
+        disc_cell = (row[idx_disc].strip() if idx_disc >= 0 and idx_disc < len(row) else "")
+
         # Validate required fields
         if not first_name or len(first_name) < 2:
-            errors.append(f"Row {i}: Invalid first name: '{first_name}'")
+            errors.append(f"Vrstica {i}: neveljavno ime: '{first_name}'")
             continue
         if not last_name or len(last_name) < 2:
-            errors.append(f"Row {i}: Invalid last name: '{last_name}'")
+            errors.append(f"Vrstica {i}: neveljaven priimek: '{last_name}'")
             continue
         if not grade or grade not in ("2.r", "3.r"):
-            errors.append(f"Row {i}: Invalid grade: '{grade}'. Must be 2.r or 3.r")
+            errors.append(f"Vrstica {i}: neveljaven razred: '{grade}'. Mora biti 2.r ali 3.r")
             continue
-        if gender not in ("M", "Ž", "m", "ž", "Z"):  # normalize
-            gender = gender.upper()  # so it's standard
-            if gender not in ("M", "Z", "Ž"):
-                errors.append(f"Row {i}: Invalid gender: '{gender}'. Must be M or Z/Ž")
-                continue
-        
+        if gender == "Z":
+            gender = "Ž"
+        if gender not in ("M", "Ž"):
+            errors.append(f"Vrstica {i}: neveljaven spol: '{gender}'. Mora biti M ali Ž")
+            continue
+
+        # Discipline ID-ji iz stolpca (ločeni s presledki, vejicami ali podpičji, npr. "1 3")
+        disc_ids = []
+        if disc_cell:
+            for del_id in re.split(r"[,; ]+", disc_cell):
+                del_id = del_id.strip()
+                if not del_id:
+                    continue
+                try:
+                    disc_ids.append(int(del_id))
+                except ValueError:
+                    errors.append(f"Vrstica {i}: disciplina '{del_id}' ni številka — uporabi ID iz tabele disciplin (npr. 1)")
+
         # Get or create school
         school = db.query(School).filter(School.name == school_name).first()
         if not school:
@@ -769,72 +801,94 @@ async def import_csv(
                 # Create inactive school if doesn't exist
                 school = School(name=school_name.strip(), email="", status=SchoolStatus.INACTIVE.value)
                 db.add(school)
-                db.commit()
+                db.flush()  # flush, ne commit: cel uvoz je ena transakcija
         if school is None:
             continue  # ni mogoče, a varno
         school_id = school.id
-        
-        # Validate discipline tick (optional)
-        # For simplicity, we'll just import pupils first
-        
-        # Check if pupil already exists
-        existing_pupil = db.query(Pupil).filter(
+
+        # Učenec: poišči ali ustvari (isti učenec je lahko v več vrsticah — za več disciplin)
+        pupil = db.query(Pupil).filter(
             Pupil.school_id == school_id,
             Pupil.first_name == first_name,
             Pupil.last_name == last_name,
             Pupil.grade == grade,
             Pupil.gender == gender
         ).first()
-        
-        if existing_pupil:
-            errors.append(f"Row {i}: Pupil {first_name} {last_name} already exists")
-            continue
-        
-        # Create pupil record
-        pupil = Pupil(
-            first_name=first_name,
-            last_name=last_name,
-            school_id=school_id,
-            grade=grade,
-            gender=gender
-        )
-        db.add(pupil)
-        pupil_id = pupil.id
-        
-        # Record goes in records list (later when events imported)
-        # For now, just validate
-        records.append({
-            "row": i,
-            "first_name": first_name,
-            "last_name": last_name,
-            "school_id": school_id,
-            "grade": grade,
-            "gender": gender,
-            "pupil_id": pupil_id,
-        })
-    
-    # Check for duplicates in CSV itself
-    # Simple check: same pupil in same row? We don't re-create same pupil in one CSV
-    
+        if not pupil:
+            # Ista oseba, a z drugačnim razredom/spolom -> napaka (verjetno tipkarska napaka)
+            ista_oseba = db.query(Pupil).filter(
+                Pupil.school_id == school_id,
+                Pupil.first_name == first_name,
+                Pupil.last_name == last_name
+            ).first()
+            if ista_oseba:
+                errors.append(f"Vrstica {i}: {first_name} {last_name} že obstaja pri šoli '{school_name}', a z drugim razredom/spolom ({ista_oseba.grade}, {ista_oseba.gender}). Popravi vrstico.")
+                continue
+            pupil = Pupil(
+                first_name=first_name,
+                last_name=last_name,
+                school_id=school_id,
+                grade=grade,
+                gender=gender
+            )
+            db.add(pupil)
+            db.flush()
+            records.append({
+                "row": i,
+                "first_name": first_name,
+                "last_name": last_name,
+                "school_id": school_id,
+                "grade": grade,
+                "gender": gender,
+                "pupil_id": pupil.id,
+            })
+
+        # Discipline iz CSV: učenca vpiši na štartno listo (nastop) za vsako disciplino
+        for disc_id in disc_ids:
+            disc = db.query(Discipline).get(disc_id)
+            if not disc:
+                errors.append(f"Vrstica {i}: neznan ID discipline {disc_id}. Preveri tabelo ID-jev.")
+                continue
+            if disc.gender.upper() != pupil.gender.upper():
+                spol_beseda = "fant" if pupil.gender == "M" else "punca"
+                errors.append(f"Vrstica {i}: {first_name} {last_name} ({spol_beseda}) ne more nastopiti v disciplini '{disc.name}' (ID {disc_id}) — disciplina je za drug spol.")
+                continue
+            veljavni_razredi = [r.strip() for r in (disc.applicable_grades or "2.r,3.r").split(",")]
+            if grade not in veljavni_razredi:
+                errors.append(f"Vrstica {i}: disciplina '{disc.name}' (ID {disc_id}) ne velja za razred {grade}.")
+                continue
+            # Poišči obstoječo štartno listo za (disciplina, razred) — najnovejšo; sicer jo ustvari
+            sl = db.query(StartList).filter(
+                StartList.discipline_id == disc_id,
+                StartList.grade == grade
+            ).order_by(StartList.event_date.desc(), StartList.id.desc()).first()
+            if not sl:
+                sl = StartList(discipline_id=disc_id, grade=grade, event_date=_dt_now.utcnow())
+                db.add(sl)
+                db.flush()
+                start_lists_created += 1
+            if pupil not in sl.pupils:
+                sl.pupils.append(pupil)
+                start_entries += 1
+
     if errors:
+        db.rollback()  # sprosti pisalno ključavnico TAKOJ (ne šele po koncu response)
         return {
             "status": "error",
             "errors": errors,
             "records_processed": len(records),
-            "message": "CSV validation failed. Please correct errors and retry."
+            "message": "Uvoz ni uspel: popravite napake in poskusite znova."
         }
-    
-    # Commit pupil creations
+
+    # Commit: učenec + štartne liste + nastopi v eni transakciji
     db.commit()
-    
-    # Now import events if provided in CSV (optional)
-    # Events might be in separate rows or same rows with discipline/time/position columns
-    
-    # For simplicity, return success
+
     return {
         "status": "success",
         "records_created": len(records),
-        "message": f"Successfully imported {len(records)} pupil(s)."
+        "start_entries": start_entries,
+        "start_lists_created": start_lists_created,
+        "message": f"Uvoženih {len(records)} učencev, dodanih {start_entries} nastopov ({start_lists_created} novih štartnih list)."
     }
 
 # === RESULTS PDF ===
