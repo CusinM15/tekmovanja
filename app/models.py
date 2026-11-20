@@ -236,6 +236,7 @@ class Record(Base):
             "pupil_id": self.pupil_id,
             "pupil_name": f"{self.pupil.first_name} {self.pupil.last_name}" if self.pupil else None,
             "pupil_grade": self.pupil.grade if self.pupil else None,
+            "school_name": (self.pupil.school.name if self.pupil and self.pupil.school else None),
             "time": self.time,
             "date_recorded": self.date_recorded.isoformat() if self.date_recorded else None,
             "notes": self.notes,

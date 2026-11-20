@@ -995,8 +995,8 @@ def delete_data(db=Depends(get_db)):
     
     return {
         "message": "Selective data deletion is available.\n"
-                   "This action will DELETEd all Pupils and CompetitionEvents (i.e., imported data).\n"
-                   "Schools and Disciplines and Records will be preserved.\n"
+                   "This action will DELETE all Pupils, CompetitionEvents, Records and StartLists\n"
+                   "Schools and Disciplines will be preserved.\n"
                    "To execute deletion, call /delete-data/execute endpoint.",
         "count_pupils": len(pupils),
         "count_events": len(events),
@@ -1011,7 +1011,8 @@ def execute_delete_data(db=Depends(get_db)):
     Delete all competition data (pupils and events) while preserving schools, disciplines, and records.
     Requires confirmation step in UI.
     """
-    from app.models import Pupil, CompetitionEvent
+    from app.models import Pupil, CompetitionEvent, Record, StartList
+    from sqlalchemy import text
     
     # Double-check user confirmation (in production, UI would have modal confirmation)
     # We'll add a simple confirmation parameter
@@ -1020,17 +1021,23 @@ def execute_delete_data(db=Depends(get_db)):
     # Get data to delete
     pupils = db.query(Pupil).all()
     events = db.query(CompetitionEvent).all()
+    records = db.query(Record).all()
     
-    if len(pupils) == 0 and len(events) == 0:
+    if len(pupils) == 0 and len(events) == 0 and len(records) == 0:
         return {"message": "No competition data to delete"}
     
     # Delete
-    db.query(Pupil).delete()
+    # Izbriši tudi odvisne vrstice (rekordi, štartne liste + članstva), da po
+    # izbrisu ne ostanejo imena otrok in se ne pokvari ponoven CSV uvoz.
+    db.execute(text("DELETE FROM start_list_pupils"))
+    db.query(StartList).delete()
+    db.query(Record).delete()
     db.query(CompetitionEvent).delete()
+    db.query(Pupil).delete()
     db.commit()
     
     return {
-        "message": f"Successfully deleted {len(pupils)} pupil(s) and {len(events)} event(s)."
+        "message": f"Successfully deleted {len(pupils)} pupil(s), {len(events)} event(s), {len(records)} record(s) and start lists."
     }
 
 # === UTILITIES ===

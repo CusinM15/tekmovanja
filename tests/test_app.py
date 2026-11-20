@@ -202,3 +202,31 @@ def test_startna_lista_pdf_s_stolpcem_rezultat(client):
     # stolpec 'Rezultat' mora biti v Pythonovem izvornem nizu tabele PDF
     src = io.open("/home/matej/forgejo/opensource/tekmovanja/app/utils.py", encoding="utf-8").read()
     assert '"Rezultat"' in src, "start_list_pdf_bytes mora vsebovati stolpec 'Rezultat'"
+
+
+def test_delete_data_nato_ponoven_uvoz_csv(client):
+    """DELETE-DATA: po /delete-data/execute morajo izginiti TUDI rekordi in štartne
+    liste (ne ostanejo imena otrok), in ponovni CSV uvoz mora spet delovati.
+    (prej je delete pustil sirote v start_list_pupils -> ob ponovnem uvozu UNIQUE
+    constraint start_list_pupils in uvoz je padel)."""
+    csv = "\ufeff" + CSV_HEADER + "\n" + "Testa,Uvozna,OŠ Žirovnica,2.r,M,1 3\n"
+    r1 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert r1["status"] == "success", r1
+    # rekordi obstajajo (seed jih ustvari)
+    rek = client.get("/records").json()
+    assert rek, "seed mora imeti rekorde"
+    assert rek[0]["school_name"] is not None or "school_name" in rek[0], "Record.to_dict mora vsebovati school_name"
+
+    d = client.post("/delete-data/execute")
+    assert d.status_code == 200, d.text
+    assert client.get("/pupils").json() == [], "pupils morajo izginiti"
+    assert client.get("/events").json() == [], "events morajo izginiti"
+    assert client.get("/records").json() == [], "rekordi morajo izginiti (ne ostanejo imena otrok)"
+    assert client.get("/start-lists").json() == [], "štartne liste morajo izginiti"
+
+    # ponovni uvoz PO izbrisu mora spet uspeti (prej UNIQUE start_list_pupils -> 500)
+    r2 = client.post("/import-csv", files={"file": ("t2.csv", csv.encode("utf-8"), "text/csv")})
+    assert r2.status_code == 200, r2.text
+    j2 = r2.json()
+    assert j2["status"] == "success", j2
+    assert j2["records_created"] == 1, j2

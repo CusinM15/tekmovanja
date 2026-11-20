@@ -223,7 +223,7 @@
       <button class="gumb gumb-orange" onclick="natovoriBestResults()">🏆 Najboljši po disciplinah</button>
     </div>
     <table class="sortable">
-      <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Čas / dolžina</th><th>Datum</th><th>Opombe</th><th></th></tr></thead>
+      <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Šola</th><th>Čas / dolžina</th><th>Datum</th><th></th></tr></thead>
       <tbody id="tabela-rekordi"></tbody>
     </table>
     <div class="prazno" id="prazno-rekordi" style="display:none">Ni še zabeleženih rekordov.</div>
@@ -266,8 +266,8 @@
     </div>
 
     <h2 style="margin-top:26px">Brisanje podatkov tekmovanja</h2>
-    <p class="opis">S tem gumbom počistite podatke tekmovanja (učence in rezultate). Šole, discipline in rekordi (najboljši rezultati) ostanejo shranjeni.</p>
-    <div class="opozorilo">⚠️ Ta ukaz <strong>trajno izbriše</strong> vse učence in vse rezultate tekmovanja. Tega ni mogoče razveljaviti! Šole, discipline in rekordi ostanejo.</div>
+    <p class="opis">S tem gumbom počistite podatke tekmovanja (učence in rezultate). Šole in discipline ostanejo; rekordi in štartne liste se prav tako izbrišejo.</p>
+    <div class="opozorilo">⚠️ Ta ukaz <strong>trajno izbriše</strong> vse učence in vse rezultate tekmovanja. Tega ni mogoče razveljaviti! Šole in discipline ostanejo.</div>
     <button class="gumb gumb-rdec" onclick="pocistiPodatke()">🗑️ Počisti podatke tekmovanja</button>
   </section>
 </main>
@@ -984,9 +984,9 @@ function natovoriRekorde(){
         '<td><strong>' + esc(r.pupil_name || '—') + '</strong></td>' +
         '<td>' + esc(r.pupil_grade || '') + '</td>' +
         '<td>' + esc(r.discipline_name || '—') + '</td>' +
+        '<td>' + esc(r.school_name || '—') + '</td>' +
         '<td><strong>' + casLepo(r.time) + '</strong></td>' +
         '<td>' + datumLepo(r.date_recorded) + '</td>' +
-        '<td>' + esc(r.notes || '') + '</td>' +
         '<td style="text-align:right;white-space:nowrap">' +
           '<span class="povezava" onclick="odpriModalRekord(' + r.id + ')">✏️ Uredi</span>' +
           '<span class="povezava rdeca" onclick="izbrisiRekord(' + r.id + ')">🗑️ Izbriši</span>' +
@@ -1019,7 +1019,7 @@ function odpriModalRekord(id){
       '<div class="polje"><label>Disciplina</label><select id="f-k-disciplina">' + opcijeD + '</select></div>' +
       '<div class="polje"><label>Čas / dolžina (v sekundah, npr. 12,5)</label><input id="f-k-cas" value="' + esc(rekord ? String(rekord.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
       '<div class="polje"><label>Datum (neobvezno)</label><input id="f-k-datum" type="date" value="' + esc(datum) + '"></div>' +
-      '<div class="polje"><label>Opombe (neobvezno)</label><textarea id="f-k-opombe" rows="2">' + esc(rekord ? rekord.notes || '' : '') + '</textarea></div>' +
+
       '<div class="modal-gumbi">' +
         '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
         '<button class="gumb gumb-zelen" onclick="shraniRekord(' + (id || 'null') + ')">Shrani</button>' +
@@ -1035,8 +1035,7 @@ function shraniRekord(id){
     discipline_id: parseInt($('f-k-disciplina').value, 10),
     pupil_id: parseInt($('f-k-ucenec').value, 10),
     time: cas,
-    date_recorded: $('f-k-datum').value || null,
-    notes: $('f-k-opombe').value.trim() || null
+    date_recorded: $('f-k-datum').value || null
   };
   var zahteva = id
     ? api('/records/' + id, 'PUT', pod)
@@ -1215,7 +1214,7 @@ function shraniSmtp(){
 
 /* ================= BRISANJE PODATKOV ================= */
 function pocistiPodatke(){
-  var odgovor = prompt('POZOR: To bo trajno izbrisalo VSE učence in VSE rezultate tekmovanja!\n\nZa potrditev vpišite: DA\n\n(Šole, discipline in rekordi ostanejo.)');
+  var odgovor = prompt('POZOR: To bo trajno izbrisalo VSE učence in VSE rezultate tekmovanja!\n\nZa potrditev vpišite: DA\n\n(Šole in discipline ostanejo.)');
   if (odgovor === null) return;
   if (odgovor.trim().toUpperCase() !== 'DA'){ toast('Brisanje preklicano — vpisali niste DA.', 'napaka'); return; }
   api('/delete-data/execute', 'POST').then(function(r){
