@@ -39,6 +39,29 @@ def get_db(session_locator=get_session):
         db.close()
 
 
+
+def _ensure_start_lists(db):
+    """Nedestruktivno: za vsako disciplino × applicable grade, ki ŠE NIMA štartne
+    liste, jo doda z do 15 učenci pravega spola+razreda. Idempotentno (že obstoječe
+    pusti pri miru). Ob zagonu tako doda manjkajoče tudi na obstoječi bazi — s tem
+    Windows klon po `git pull` dobi štartne liste brez brisanja podatkov."""
+    discs = db.query(Discipline).all()
+    for d in discs:
+        grades = [g.strip() for g in (d.applicable_grades or "").split(",") if g.strip()]
+        obstoj = {sl.grade for sl in db.query(StartList).filter(StartList.discipline_id == d.id).all()}
+        for grade in grades:
+            if grade in obstoj:
+                continue
+            kandidati = db.query(Pupil).filter(
+                Pupil.gender == d.gender, Pupil.grade == grade
+            ).order_by(Pupil.id).all()
+            if not kandidati:
+                continue
+            nova = StartList(discipline_id=d.id, grade=grade, event_date=datetime.now())
+            nova.pupils = kandidati[:15]
+            db.add(nova)
+
+
 def _seed_defaults():
     """Ob prvem zagonu (prazna baza) napolni šole, discipline, učence in rekorde,
     da lahko uporabnik takoj preizkusi app. Če tabela že ima podatke, se ne dotika."""
@@ -141,12 +164,14 @@ def _seed_defaults():
             rnd = random.Random(42)
             from datetime import datetime as _dt
 
+            # Rezultate dobi LE del nastopajočih (ne vsi 15 na disciplino):
+            REZULTATOV_PO_DISCIPLINI = 9
             moske = [(k, v) for k, v in disc.items() if ("♂" in k) or k.rstrip().endswith("M")]
             zenske = [(k, v) for k, v in disc.items() if not (("♂" in k) or k.rstrip().endswith("M"))]
             # po 4 discipline; vsaka dobi 60/4=15 učencev iz svojega spolskega bazena
             for idx, (disc_ime, disc_id) in enumerate(moske):
                 pas = ucenci_m[idx * 15: idx * 15 + 15]
-                for mesto, u in enumerate(pas, start=1):
+                for mesto, u in enumerate(pas[:REZULTATOV_PO_DISCIPLINI], start=1):
                     if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
                         cas = round(rnd.uniform(2.5, 5.5), 2)
                     else:
@@ -155,7 +180,7 @@ def _seed_defaults():
                                             time=cas, position=mesto))
             for idx, (disc_ime, disc_id) in enumerate(zenske):
                 pas = ucenci_z[idx * 15: idx * 15 + 15]
-                for mesto, u in enumerate(pas, start=1):
+                for mesto, u in enumerate(pas[:REZULTATOV_PO_DISCIPLINI], start=1):
                     if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
                         cas = round(rnd.uniform(2.5, 5.5), 2)
                     else:
@@ -184,18 +209,13 @@ def _seed_defaults():
                                       notes=f"Rekord tekmovanja ({razred})"))
             db.commit()
 
-            # Štartne liste: ena na disciplino — SVOJIH 15 učencev (isti pas kot rezultati)
-            for idx, (disc_ime, disc_id) in enumerate(moske):
-                sl = StartList(discipline_id=disc_id, grade="2.r",
-                               event_date=_dt(2026, 11, 28, 8, 0))
-                sl.pupils = ucenci_m[idx * 15: idx * 15 + 15]
-                db.add(sl)
-            for idx, (disc_ime, disc_id) in enumerate(zenske):
-                sl = StartList(discipline_id=disc_id, grade="2.r",
-                               event_date=_dt(2026, 11, 28, 8, 0))
-                sl.pupils = ucenci_z[idx * 15: idx * 15 + 15]
-                db.add(sl)
-            db.commit()
+            # Štartne liste za vsako disciplino × razred ustvari _ensure_start_lists spodaj
+            # (do 15 učencev pravega spola/razreda; deluje tudi na obstoječi bazi).
+
+        # Nedestruktivno: na OBSTOJEČI bazi (Windows) doda manjkajoče štartne liste,
+        # da jih uporabnik dobi takoj po `git pull`, brez brisanja podatkov.
+        _ensure_start_lists(db)
+        db.commit()
 
     except Exception as e:
         db.rollback()

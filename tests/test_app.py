@@ -78,8 +78,8 @@ def test_seed_podatki_obstajajo(client):
     """Ob prvem zagonu mora biti baza napolnjena (tudi v testni bazi)."""
     assert len(_disciplines(client)) == 8
     assert len(client.get("/pupils").json()) == 120
-    assert len(_events(client)) == 120
-    assert len(_start_lists(client)) == 8
+    assert len(_events(client)) == 72, "rezultate dobi LE del nastopajočih (9 × 8 disciplin), ne vsi učenci"
+    assert len(_start_lists(client)) == 16, "vsaka disciplina × 2 razreda (2.r, 3.r) ima štartno listo"
 
 
 def test_kartice_xN_format_za_vsako_disciplino(client):
