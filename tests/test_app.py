@@ -282,6 +282,18 @@ def test_avtomatsko_mesto_in_tocke_po_solah(client):
     assert n(u0["school_name"]) == 12, f"šola 2. mesta mora dobiti 12 točk (dobil {n(u0['school_name'])})"
     assert n(u1["school_name"]) == 15, f"šola 1. mesta mora dobiti 15 točk (dobil {n(u1['school_name'])})"
 
+
+def test_uvoz_vecih_disciplin_brez_narekovajev(client):
+    """'1,2,4' BREZ narekovajev csv razbije na več celic — uvoz mora vseeno
+    prebrati VSE discipline (združi celice od Discipline naprej), ne samo prve."""
+    csv = ("\ufeffŠOLA:\nOŠ Koroška Bela\n\n"
+           "First Name, Last Name, Grade, Gender, Discipline (IDs)\n"
+           "Več,Disciplin,2,M,1,2,4\n")
+    j = client.post("/import-csv", files={"file": ("m.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert j["status"] == "success", j
+    assert j["start_entries"] == 3, j
+
+
 def test_delete_data_nato_ponoven_uvoz_csv(client):
     """DELETE-DATA: po /delete-data/execute morajo izginiti TUDI rekordi in štartne
     liste (ne ostanejo imena otrok), in ponovni CSV uvoz mora spet delovati.

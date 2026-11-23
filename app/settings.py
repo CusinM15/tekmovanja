@@ -11,7 +11,7 @@ from pathlib import Path
 # Default configuration
 DEFAULT_CONFIG = {
     "smtp": {
-        "host": "smtp.arne.gov.si",  # Example Arnes SMTP host
+        "host": "smtp.arnes.si",  # Arnes SMTP strežnik
         "port": 587,
         "user": None,
         "password": None,
@@ -50,7 +50,7 @@ class AppConfig:
     sqlite_path: Optional[str] = None
     
     # SMTP settings
-    smtp_host: str = "smtp.arne.gov.si"
+    smtp_host: str = "smtp.arnes.si"
     smtp_port: int = 587
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
@@ -100,6 +100,9 @@ class AppConfig:
                 if _s.get("password"): self.smtp_password = _s["password"]
                 self.smtp_from = (_s.get("from") or "").strip() or None
                 if _s.get("host"): self.smtp_host = _s["host"]
+                # Migracija: stari napačni privzeti strežnik → pravilen Arnes SMTP
+                if self.smtp_host == "smtp.arne.gov.si":
+                    self.smtp_host = "smtp.arnes.si"
                 if _s.get("port"): self.smtp_port = int(_s["port"])
                 if "tls" in _s: self.smtp_tls = bool(_s["tls"])
                 # school settings merge logic

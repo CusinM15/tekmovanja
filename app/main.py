@@ -671,7 +671,7 @@ def _csv_template():
         "   - Ime in priimek (npr. Ana Novak)\n"
         "   - Razred: samo 2 ali 3 (brez .r)\n"
         "   - Spol: M (fant) ali Ž (punca)\n"
-        "   - Discipline: ID-je iz tabele spodaj, ločene z VEJICO — npr. 1,2,4 (učenec nastopa v teh športih)\n"
+        "   - Discipline: ID-je iz tabele zgoraj (1-4), ločene z vejico ali presledkom — npr. 1,2,4 (učenec nastopa v teh športih)\n"
         "3. Datoteko shrani in vrni organizatorju.\n"
         "\n"
     )
@@ -996,7 +996,10 @@ async def import_csv(
 
         # Discipline = športi (ID 1-4) iz stolpca Discipline (ločeni z vejico, npr. 1,2,4);
         # tekmovalna skupina = (šport, spol, razred) — spol+razred iz vrstice.
-        disc_cell = (row[idx_disc].strip() if idx_disc >= 0 and idx_disc < len(row) else "")
+        # Stolpec Discipline: vzamemo VSE celice od Discipline naprej — če je šola
+        # vpisala "1,2,4" brez narekovajev, jo csv razbije na več celic; združimo,
+        # da uvoz prebere VSE discipline (ne samo prve).
+        disc_cell = " ".join((c or "").strip() for c in row[idx_disc:]) if idx_disc >= 0 and idx_disc < len(row) else ""
         disc_ids = []
         for del_id in re.split(r"[,; ]+", disc_cell):
             del_id = del_id.strip()
@@ -1404,7 +1407,7 @@ def get_smtp_settings_api(db=Depends(get_db)):
 
 @app.post("/api/smtp", response_model=dict, summary="Save SMTP settings")
 def save_smtp_settings(
-    host: str = Form("smtp.arne.gov.si"),
+    host: str = Form("smtp.arnes.si"),
     port: int = Form(587),
     user: str = Form(...),
     password: str = Form(""),
