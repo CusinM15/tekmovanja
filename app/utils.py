@@ -131,30 +131,54 @@ def send_email(
     attachments: List[tuple] = None,
 ):
     """
-    Send email via SMTP.
-    In production, this uses the SMTP settings from app_config.
-    For development/demo, prints the message.
+    Send email via SMTP (STARTTLS), uporabi nastavitve iz app_config.
+    Deluje s Proton Bridge (self-signed cert → brez verifikacije, kot reklama skripta).
+    Vrne dict: {"status": "sent", ...} ob uspehu, drugače dvigne napako.
     """
+    import smtplib
+    import ssl
+    from email.message import EmailMessage
     from app.settings import app_config
-    
+
     if not recipients or len(recipients) == 0:
-        print("No recipients provided")
-        return
-    
-    # Check if SMTP credentials are configured
+        raise ValueError("Ni prejemnikov.")
+
     if not app_config.smtp_user or not app_config.smtp_password:
-        print(f"SMTP credentials NOT CONFIGURED! Sender: {sender}")
-        print(f"Recipients: {recipients}")
-        print(f"Subject: {subject}")
-        print(f"Body:\n{body}")
-        return
-    
-    # In demo mode, just print the message
-    print(f"\n=== EMAIL ===\nFrom: {sender}\nTo: {', '.join(recipients)}\nSubject: {subject}\nBody:\n{body}")
-    if attachments:
-        print(f"\nAttachments:\n{', '.join([f'{a[0]} ({a[2]})' for a in attachments])}")
-    
-    return {"status": "queued", "message": "Email sent (demo)"}
+        raise RuntimeError("SMTP uporabniško ime ali geslo ni nastavljeno (Nastavitve e-pošte).")
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(body)
+
+    for filename, content, mime in (attachments or []):
+        maintype, _, subtype = (mime or "application/octet-stream").partition("/")
+        # Text priloge morajo biti bytes (str + maintype pade v Python 3.13)
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        msg.add_attachment(
+            content,
+            maintype=maintype or "application",
+            subtype=subtype or "octet-stream",
+            filename=filename,
+        )
+
+    # Proton Bridge (in nekateri lokalni strežniki) imajo self-signed cert
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    host = app_config.smtp_host or "127.0.0.1"
+    port = app_config.smtp_port or 1025
+    with smtplib.SMTP(host, port, timeout=60) as s:
+        if app_config.smtp_tls:
+            s.starttls(context=ctx)
+        s.login(app_config.smtp_user, app_config.smtp_password)
+        s.send_message(msg)
+
+    print(f"EMAIL poslan: {sender} → {', '.join(recipients)} | {subject}")
+    return {"status": "sent", "message": f"Poslano na {len(recipients)} naslovov."}
 
 
 def generate_results_pdf(events, discipline_id=None, school_id=None):

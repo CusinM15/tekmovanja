@@ -375,3 +375,75 @@ def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
     finally:
         app_config.config_file = orig
 
+
+def test_send_email_gre_res_prek_smtp(monkeypatch):
+    """send_email mora dejansko iti prek SMTP (login + send_message), ne samo printati."""
+    from app.settings import app_config
+    from app.utils import send_email
+
+    # zapolnimo SMTP nastavitve (testne, izmišljene)
+    app_config.smtp_host = "127.0.0.1"
+    app_config.smtp_port = 1025
+    app_config.smtp_user = "test@test.si"
+    app_config.smtp_password = "sifra"
+    app_config.smtp_tls = False
+    app_config.smtp_from = "posiljatelj@test.si"
+
+    calls = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=60):
+            calls["init"] = (host, port)
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def starttls(self, context=None):
+            calls["starttls"] = True
+        def login(self, user, pw):
+            calls["login"] = (user, pw)
+        def send_message(self, msg):
+            calls["send_message"] = msg
+
+    monkeypatch.setattr("smtplib.SMTP", FakeSMTP)
+
+    res = send_email(
+        subject="Test",
+        sender="posiljatelj@test.si",
+        recipients=["a@test.si", "b@test.si"],
+        body="Zdravo",
+        attachments=[("priloga.csv", "a,b\n1,2\n", "text/csv")],
+    )
+    assert res["status"] == "sent"
+    assert calls["init"] == ("127.0.0.1", 1025)
+    assert calls["login"] == ("test@test.si", "sifra")
+    msg = calls["send_message"]
+    assert msg["From"] == "posiljatelj@test.si"
+    assert msg["To"] == "a@test.si, b@test.si"
+    assert msg["Subject"] == "Test"
+    # priloga mora biti v sporočilu (multipart)
+    assert msg.is_multipart(), "sporočilo s prilogo mora biti multipart"
+
+    # brez SMTP nastavitev → napaka, ne tiho printanje
+    app_config.smtp_password = None
+    import pytest
+    with pytest.raises(RuntimeError):
+        send_email(subject="T", sender="s", recipients=["a@b.si"], body="b")
+
+
+def test_send_emails_endpoint_ne_laze(client, monkeypatch):
+    """/send-emails mora ob napaki vrniti sporočilo o napaki, ne 'poslano'."""
+    from app.utils import send_email
+
+    def boom(*a, **k):
+        raise RuntimeError("SMTP nedosegljiv (test)")
+
+    monkeypatch.setattr("app.utils.send_email", boom)
+
+    r = client.post("/send-emails")
+    assert r.status_code == 200, r.text
+    j = r.json()
+    # ne sme trditi, da je poslal
+    assert "Pošiljanje ni uspelo" in j["message"], j
+    assert "poslal" not in j["message"].lower().replace("pošiljanje", ""), j
+

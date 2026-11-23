@@ -648,6 +648,27 @@ def list_start_lists(db=Depends(get_db)):
 
 # === SCHOOL INVITATIONS ===
 
+
+def _csv_template(legenda: str) -> str:
+    """CSV predloga za šole: navodila + polje »ŠOLA« (enkrat) + ID legenda + glava.
+    Razred šola vpiše kot 2 ali 3 (brez ».r«); šolo SAMO enkrat na vrhu."""
+    navodila = (
+        "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
+        "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
+        "2. Vsako vrstico spodaj izpolni za ENEGA učenca:\n"
+        "   - Ime in priimek (npr. Ana Novak)\n"
+        "   - Razred: samo 2 ali 3 (brez .r)\n"
+        "   - Spol: M (fant) ali Ž (punca)\n"
+        "   - Disciplina: številke iz tabele ID spodaj (lahko več, ločene s presledkom, npr. 1 3)\n"
+        "3. Datoteko shrani in vrni organizatorju.\n"
+        "\n"
+    )
+    return ("\ufeff" + navodila +
+            "ŠOLA:\n<ime svoje šole>\n\n" +
+            legenda + "\n" +
+            "First Name, Last Name, Grade, Gender, Discipline (ID)\n")
+
+
 @app.get("/send-invitations", response_model=dict, summary="Generate CSV template")
 def generate_csv_template():
     """Generate blank CSV template for school data collection."""
@@ -667,9 +688,7 @@ def generate_csv_template():
         legenda += f"{d.id},{d.name} ({spol})\n"
     legenda += "\n"
 
-    csv_content = "\ufeff" + legenda + \
-                  "First Name,Last Name,School,Grade,Gender,Discipline (ID)\n" \
-                  "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)\n"
+    csv_content = _csv_template(legenda)
     
     # For file download
     from fastapi import File, UploadFile, Form
@@ -694,17 +713,26 @@ def generate_csv_template():
 def send_invitations_emails(db=Depends(get_db)):
     """Send email invitations to all active schools with CSV template."""
     from app.utils import send_email
-    
+
     db_session = db  # reuse (prek Depends, samodejno zaprt)
     active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
-    
+
     if not active_schools:
         return {"message": "No active schools found"}
-    
+
     subject = "Uporaba tekmovanja - sh registers"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
     recipients = [s.email for s in active_schools]
-    
+
+    # CSV predloga z ID tabelo disciplin (kot GET /send-invitations)
+    disc = db_session.query(Discipline).order_by(Discipline.id).all()
+    legenda = "ID,Disciplina (za koga)\n"
+    for d in disc:
+        spol = "fantje" if d.gender == "M" else "punce"
+        legenda += f"{d.id},{d.name} ({spol})\n"
+    legenda += "\n"
+    csv_content = _csv_template(legenda)
+
     # Build message
     body = f"Cerkev tekmovanja o športni tekmovanju.\n\n" \
            "Prosimo, da vnašte spletno razmisljo o namenu tekmovanja v vaši šoli.\n\n" \
@@ -712,20 +740,20 @@ def send_invitations_emails(db=Depends(get_db)):
            "Vrziš: Tekmovanja v Primarni šoli\n\n" \
            "Ko vpisali štroke v CSV, vrziši jih nazpored.\n\n" \
            "Zahvalimo!"
-    
+
     try:
         send_email(
             subject=subject,
             sender=sender,
             recipients=recipients,
             body=body,
-            attachments=[("attendance_template.csv", "tekmo_attendance.csv", csv_content)],  # csv_content from above
+            attachments=[("attendance_template.csv", csv_content, "text/csv")],
         )
     except Exception as e:
-        # In dev env without SMTP, just return message
-        pass
-    
-    return {"message": f"Invitations sent to {len(recipients)} school(s). Check email credentials."}
+        print(f"send-emails napaka: {e}")
+        return {"message": f"Pošiljanje ni uspelo: {e}"}
+
+    return {"message": f"Invitations sent to {len(recipients)} school(s)."}
 
 # === CSV IMPORT ===
 
@@ -758,15 +786,39 @@ async def import_csv(
     if rows and rows[0]:
         rows[0][0] = rows[0][0].lstrip("\ufeff")
 
-    # Najdi vrstico z dejanskimi angleškimi headerji kode (ne slovenski primer)
+    # Najdi vrstico z dejanskimi angleškimi headerji kode (šola je zdaj zgoraj v polju)
     header_idx = None
     for idx, r in enumerate(rows):
         nizki = {c.strip().lower() for c in r if c.strip()}
-        if "first name" in nizki and "last name" in nizki and "school" in nizki:
+        if "first name" in nizki and "last name" in nizki and ("grade" in nizki or "gender" in nizki):
             header_idx = idx
             break
     if header_idx is None:
-        raise HTTPException(status_code=400, detail="CSV manjka glava: First Name, Last Name, School, Grade, Gender, Discipline (ID)")
+        raise HTTPException(status_code=400, detail="CSV manjka glava: First Name, Last Name, Grade, Gender, Discipline (ID)")
+
+    # Šola iz polja zgoraj »ŠOLA:« — šolo šole vpišejo SAMO ENKRAT za celo datoteko
+    def _norm_grade(g):
+        g = g.strip()
+        return {"2": "2.r", "3": "3.r"}.get(g, g)
+
+    sola = None
+    for i in range(header_idx):
+        if not rows[i] or not rows[i][0]:
+            continue
+        cel0 = (rows[i][0] or "").strip().lstrip("\ufeff")
+        low = cel0.lower()
+        if low.startswith("šola") or low.startswith("sola"):
+            val = cel0
+            for oznaka in ("šola:", "šola", "sola:", "sola"):
+                if val.lower().startswith(oznaka):
+                    val = val[len(oznaka):].strip()
+                    break
+            if not val and len(rows[i]) > 1:
+                val = (rows[i][1] or "").strip()
+            if not val and i + 1 < header_idx and rows[i + 1]:
+                val = " ".join((c or "").strip() for c in rows[i + 1] if (c or "").strip())
+            sola = val or None
+            break
 
     # Headerji poenoteni: mala črka, brez oklepajev (npr. "Discipline (ID)" -> "discipline")
     def _norm(h):
@@ -785,6 +837,8 @@ async def import_csv(
     idx_disc = col("discipline")
     if -1 in (idx_first, idx_last):
         raise HTTPException(status_code=400, detail="CSV manjka stolpca 'First Name' ali 'Last Name'")
+    if idx_school < 0 and not sola:
+        raise HTTPException(status_code=400, detail="CSV manjka polje »ŠOLA« zgoraj (šola se vpiše enkrat na vrhu).")
 
     import re
     from datetime import datetime as _dt_now
@@ -809,8 +863,9 @@ async def import_csv(
         # Extract field values
         first_name = row[idx_first].strip()
         last_name = (row[idx_last].strip() if idx_last >= 0 and idx_last < len(row) else "")
-        school_name = (row[idx_school].strip() if idx_school >= 0 and idx_school < len(row) else "")
-        grade = (row[idx_grade].strip() if idx_grade >= 0 and idx_grade < len(row) else "")
+        # Šola: če glava nima stolpca School, uporabi šolo iz polja zgoraj (enotna za celo datoteko)
+        school_name = (row[idx_school].strip() if idx_school >= 0 and idx_school < len(row) else (sola or ""))
+        grade = _norm_grade(row[idx_grade].strip() if idx_grade >= 0 and idx_grade < len(row) else "")
         gender = (row[idx_gender].strip() if idx_gender >= 0 and idx_gender < len(row) else "").upper()
         disc_cell = (row[idx_disc].strip() if idx_disc >= 0 and idx_disc < len(row) else "")
 
@@ -1005,7 +1060,7 @@ def email_results(
         )
     except Exception as e:
         print(f"Email error: {e}")
-        return {"message": "Could not send email. Check SMTP configuration."}
+        return {"message": f"Pošiljanje ni uspelo: {e}"}
     
     return {
         "message": f"Results emailed to {len(active_schools)} school(s)."
@@ -1296,6 +1351,7 @@ def save_smtp_settings(
     user: str = Form(...),
     password: str = Form(""),
     from_addr: str = Form(None),
+    tls: int = Form(1),
     db=Depends(get_db)
 ):
     """Save SMTP credentials (stored locally, never in git).
@@ -1304,6 +1360,7 @@ def save_smtp_settings(
     nespremenjeno"); če ni shranjenega gesla, pa vrnemo napako."""
     app_config.smtp_host = host.strip()
     app_config.smtp_port = port
+    app_config.smtp_tls = bool(tls)
     app_config.smtp_from = (from_addr or "").strip() or None
     if password:
         app_config.set_smtp_credentials(user.strip(), password)

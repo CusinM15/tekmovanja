@@ -103,6 +103,7 @@ class AppConfig:
                 self.smtp_from = (_s.get("from") or "").strip() or None
                 if _s.get("host"): self.smtp_host = _s["host"]
                 if _s.get("port"): self.smtp_port = int(_s["port"])
+                if "tls" in _s: self.smtp_tls = bool(_s["tls"])
                 # school settings merge logic
                 # discipline settings merge logic
                 # We'll keep it simple for now
