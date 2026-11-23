@@ -44,9 +44,13 @@ def _ucenci_po_disciplini_in_razredu(ucenci, disc):
     nastopi = {}
     for d in disc:
         grades = {g.strip() for g in (d.get("applicable_grades") or "").split(",")}
+        nevtralen = not (d.get("gender") or "")
         for p in ucenci:
-            if p["gender"] == d["gender"] and p["grade"] in grades:
-                nastopi.setdefault(d["id"], {}).setdefault(p["grade"], set()).add(p["id"])
+            if p["grade"] not in grades:
+                continue
+            if (not nevtralen) and p["gender"] != d["gender"]:
+                continue
+            nastopi.setdefault(d["id"], {}).setdefault(p["grade"], set()).add(p["id"])
     return nastopi
 
 
@@ -76,10 +80,10 @@ def test_stran_se_nalozi(client):
 
 def test_seed_podatki_obstajajo(client):
     """Ob prvem zagonu mora biti baza napolnjena (tudi v testni bazi)."""
-    assert len(_disciplines(client)) == 4, "samo 4 discipline (spol×razred)"
+    assert len(_disciplines(client)) == 4, "samo 4 discipline (športi: tek 60m, tek 400m, skok, met)"
     assert len(client.get("/pupils").json()) == 120
     assert len(_events(client)) == 36, "rezultate dobi LE del nastopajočih (9 × 4 discipline)"
-    assert len(_start_lists(client)) == 4, "vsaka disciplina (spol×razred) ima 1 štartno listo"
+(spol×razred) ima 1 štartno listo"
 
 
 def test_kartice_xN_format_za_vsako_disciplino(client):
@@ -148,12 +152,12 @@ def test_uvoz_csv_z_disciplino_in_idempotenca(client):
            "*** NAVODILA ***\n"
            "ŠOLA:\nOŠ Žirovnica\n"
            "\n"
-           "First Name, Last Name, Grade, Gender\n"
-           "Testa,Uvozna,2,Ž\n")
+           "First Name, Last Name, Grade, Gender, Discipline (IDs)\n"
+           "Testa,Uvozna,2,Ž,2\n")
     r1 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert r1["status"] == "success", r1
     assert r1["records_created"] == 1
-    assert r1["start_entries"] == 1, "samodejno ena disciplina (Dekleta 2.r)"
+    assert r1["start_entries"] == 1, "ena disciplina (ID 2 → tek 400m, 2.r, Ž)"
 
     r2 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert r2["status"] == "success", r2
@@ -164,12 +168,12 @@ def test_uvoz_csv_napaka_ne_shrani_nicesar(client):
     """CSV UVOZ: neveljaven spol ali razred -> status error, nič se ne shrani (rollback)."""
     def uvozi(vrstica):
         csv = ("\ufeffŠOLA:\nOŠ Žirovnica\n\n"
-               "First Name, Last Name, Grade, Gender\n" + vrstica + "\n")
+               "First Name, Last Name, Grade, Gender, Discipline (IDs)\n" + vrstica + "\n")
         return client.post("/import-csv", files={"file": ("b.csv", csv.encode("utf-8"), "text/csv")}).json()
-    r = uvozi("Napaka,Uvozna2,2,X")
+    r = uvozi("Napaka,Uvozna2,2,X,1")
     assert r["status"] == "error", r
     assert not [p for p in client.get("/pupils").json() if p["first_name"] == "Napaka"]
-    r2 = uvozi("Mojca,Testna3,4,Ž")
+    r2 = uvozi("Mojca,Testna3,4,Ž,1")
     assert r2["status"] == "error", r2
     assert not [p for p in client.get("/pupils").json() if p["first_name"] == "Mojca"]
 
@@ -281,8 +285,8 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
     (prej je delete pustil sirote v start_list_pupils -> ob ponovnem uvozu UNIQUE
     constraint start_list_pupils in uvoz je padel)."""
     csv = ("\ufeff*** NAVODILA ***\nŠOLA:\nOŠ Prežihov Voranc\n\n"
-           "First Name, Last Name, Grade, Gender\n"
-           "Zala,Mivšek,3,Ž\n")
+           "First Name, Last Name, Grade, Gender, Discipline (IDs)\n"
+           "Zala,Mivšek,3,Ž,2\n")
     r1 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert r1["status"] == "success", r1
     # rekordi obstajajo (seed jih ustvari)

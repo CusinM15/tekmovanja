@@ -38,11 +38,13 @@ def generate_csv_template() -> str:
     template = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
-        "2. Vsako vrstico spodaj izpolni za ENEGA učenca (razred: 2 ali 3; spol: M ali Ž).\n"
-        "3. Disciplina se določi samodejno glede na spol in razred.\n"
-        "4. Datoteko shrani in vrni organizatorju.\n\n"
+        "2. Vsako vrstico spodaj izpolni za ENEGA učenca (razred: 2 ali 3; spol: M ali Ž;\n"
+        "   Discipline: ID-je 1-4 iz tabele, ločene z vejico npr. 1,2,4).\n"
+        "3. Datoteko shrani in vrni organizatorju.\n\n"
         "ŠOLA:\n<ime svoje šole>\n\n"
-        "First Name, Last Name, Grade, Gender\n"
+        "ID,Disciplina (šport)\n"
+        "1,tek 60m\n2,tek 400m\n3,skok v daljino\n4,met vorteksa\n\n"
+        "First Name, Last Name, Grade, Gender, Discipline (IDs)\n"
     )
     return template
 
