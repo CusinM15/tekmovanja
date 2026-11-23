@@ -32,14 +32,11 @@ DEFAULT_CONFIG = {
     "disciplines": {
         # Disciplines that start with these schools by default.
         # Spol je v imenu kot ikona (♂/♀), ločeni stolpec Spol v tabeli ni več.
-        "tek 60m ♂": ["2.r", "3.r"],
-        "tek 60m ♀": ["2.r", "3.r"],
-        "tek 400m ♂": ["2.r", "3.r"],
-        "tek 400m ♀": ["2.r", "3.r"],
-        "skok v daljino ♂": ["2.r", "3.r"],
-        "skok v daljino ♀": ["2.r", "3.r"],
-        "met vorteksa ♂": ["2.r", "3.r"],
-        "met vorteksa ♀": ["2.r", "3.r"],
+        # Samo 4 discipline = kombinacije spol×razred (uvoz določi disciplino iz spola+razreda)
+        "Fantje 2. r ♂": ["2.r"],
+        "Fantje 3. r ♂": ["3.r"],
+        "Dekleta 2. r ♀": ["2.r"],
+        "Dekleta 3. r ♀": ["3.r"],
     },
 }
 

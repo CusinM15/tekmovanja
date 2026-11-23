@@ -649,9 +649,9 @@ def list_start_lists(db=Depends(get_db)):
 # === SCHOOL INVITATIONS ===
 
 
-def _csv_template(legenda: str) -> str:
-    """CSV predloga za šole: navodila + polje »ŠOLA« (enkrat) + ID legenda + glava.
-    Razred šola vpiše kot 2 ali 3 (brez ».r«); šolo SAMO enkrat na vrhu."""
+def _csv_template():
+    """CSV predloga za šole: navodila + polje »ŠOLA« (šola se vpiše ENKRAT) + glava.
+    Razred samo 2 ali 3 (brez ».r«); disciplina se določi SAMODEJNO iz spola+razreda."""
     navodila = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
@@ -659,14 +659,35 @@ def _csv_template(legenda: str) -> str:
         "   - Ime in priimek (npr. Ana Novak)\n"
         "   - Razred: samo 2 ali 3 (brez .r)\n"
         "   - Spol: M (fant) ali Ž (punca)\n"
-        "   - Disciplina: številke iz tabele ID spodaj (lahko več, ločene s presledkom, npr. 1 3)\n"
-        "3. Datoteko shrani in vrni organizatorju.\n"
+        "3. Disciplina se določi samodejno glede na spol in razred — ničesar ni treba vpisovati.\n"
+        "4. Datoteko shrani in vrni organizatorju.\n"
         "\n"
     )
     return ("\ufeff" + navodila +
             "ŠOLA:\n<ime svoje šole>\n\n" +
-            legenda + "\n" +
-            "First Name, Last Name, Grade, Gender, Discipline (ID)\n")
+            "First Name, Last Name, Grade, Gender\n")
+
+
+# 4 discipline = kombinacije (spol, razred): vsaka vrsta iz CSV gre v natanko 1 disciplino
+SPOL_RAZRED_DISC = {
+    ("M", "2.r"): "Fantje 2. r ♂",
+    ("M", "3.r"): "Fantje 3. r ♂",
+    ("Ž", "2.r"): "Dekleta 2. r ♀",
+    ("Ž", "3.r"): "Dekleta 3. r ♀",
+}
+
+
+def _disciplina_za(db, spol, razred):
+    """Vrne disciplino, ki ustreza (spol, razred); ustvari jo, če še ne obstaja."""
+    ime = SPOL_RAZRED_DISC.get((spol, razred))
+    if not ime:
+        return None
+    d = db.query(Discipline).filter(Discipline.name == ime).first()
+    if not d:
+        d = Discipline(name=ime, gender=spol, applicable_grades=razred)
+        db.add(d)
+        db.flush()
+    return d
 
 
 @app.get("/send-invitations", response_model=dict, summary="Generate CSV template")
@@ -688,7 +709,7 @@ def generate_csv_template():
         legenda += f"{d.id},{d.name} ({spol})\n"
     legenda += "\n"
 
-    csv_content = _csv_template(legenda)
+    csv_content = _csv_template()
     
     # For file download
     from fastapi import File, UploadFile, Form
@@ -731,7 +752,7 @@ def send_invitations_emails(db=Depends(get_db)):
         spol = "fantje" if d.gender == "M" else "punce"
         legenda += f"{d.id},{d.name} ({spol})\n"
     legenda += "\n"
-    csv_content = _csv_template(legenda)
+    csv_content = _csv_template()
 
     # Build message
     body = f"Cerkev tekmovanja o športni tekmovanju.\n\n" \
@@ -867,7 +888,6 @@ async def import_csv(
         school_name = (row[idx_school].strip() if idx_school >= 0 and idx_school < len(row) else (sola or ""))
         grade = _norm_grade(row[idx_grade].strip() if idx_grade >= 0 and idx_grade < len(row) else "")
         gender = (row[idx_gender].strip() if idx_gender >= 0 and idx_gender < len(row) else "").upper()
-        disc_cell = (row[idx_disc].strip() if idx_disc >= 0 and idx_disc < len(row) else "")
 
         # Validate required fields
         if not first_name or len(first_name) < 2:
@@ -885,17 +905,6 @@ async def import_csv(
             errors.append(f"Vrstica {i}: neveljaven spol: '{gender}'. Mora biti M ali Ž")
             continue
 
-        # Discipline ID-ji iz stolpca (ločeni s presledki, vejicami ali podpičji, npr. "1 3")
-        disc_ids = []
-        if disc_cell:
-            for del_id in re.split(r"[,; ]+", disc_cell):
-                del_id = del_id.strip()
-                if not del_id:
-                    continue
-                try:
-                    disc_ids.append(int(del_id))
-                except ValueError:
-                    errors.append(f"Vrstica {i}: disciplina '{del_id}' ni številka — uporabi ID iz tabele disciplin (npr. 1)")
 
         # Get or create school
         school = db.query(School).filter(School.name == school_name).first()
@@ -950,33 +959,25 @@ async def import_csv(
                 "pupil_id": pupil.id,
             })
 
-        # Discipline iz CSV: učenca vpiši na štartno listo (nastop) za vsako disciplino
-        for disc_id in disc_ids:
-            disc = db.query(Discipline).get(disc_id)
-            if not disc:
-                errors.append(f"Vrstica {i}: neznan ID discipline {disc_id}. Preveri tabelo ID-jev.")
-                continue
-            if disc.gender.upper() != pupil.gender.upper():
-                spol_beseda = "fant" if pupil.gender == "M" else "punca"
-                errors.append(f"Vrstica {i}: {first_name} {last_name} ({spol_beseda}) ne more nastopiti v disciplini '{disc.name}' (ID {disc_id}) — disciplina je za drug spol.")
-                continue
-            veljavni_razredi = [r.strip() for r in (disc.applicable_grades or "2.r,3.r").split(",")]
-            if grade not in veljavni_razredi:
-                errors.append(f"Vrstica {i}: disciplina '{disc.name}' (ID {disc_id}) ne velja za razred {grade}.")
-                continue
-            # Poišči obstoječo štartno listo za (disciplina, razred) — najnovejšo; sicer jo ustvari
-            sl = db.query(StartList).filter(
-                StartList.discipline_id == disc_id,
-                StartList.grade == grade
-            ).order_by(StartList.event_date.desc(), StartList.id.desc()).first()
-            if not sl:
-                sl = StartList(discipline_id=disc_id, grade=grade, event_date=_dt_now.utcnow())
-                db.add(sl)
-                db.flush()
-                start_lists_created += 1
-            if pupil not in sl.pupils:
-                sl.pupils.append(pupil)
-                start_entries += 1
+        # Po novem: disciplina se določi SAMODEJNO iz spola+razreda (4 discipline:
+        # M-2.r, M-3.r, Ž-2.r, Ž-3.r) — v CSV ni več stolpca Discipline.
+        disc = _disciplina_za(db, gender, grade)
+        if disc is None:
+            errors.append(f"Vrstica {i}: za spol '{gender}' in razred '{grade}' ni ustrezne discipline.")
+            continue
+        disc_id = disc.id
+        sl = db.query(StartList).filter(
+            StartList.discipline_id == disc_id,
+            StartList.grade == grade
+        ).order_by(StartList.event_date.desc(), StartList.id.desc()).first()
+        if not sl:
+            sl = StartList(discipline_id=disc_id, grade=grade, event_date=_dt_now.utcnow())
+            db.add(sl)
+            db.flush()
+            start_lists_created += 1
+        if pupil not in sl.pupils:
+            sl.pupils.append(pupil)
+            start_entries += 1
 
     if errors:
         db.rollback()  # sprosti pisalno ključavnico TAKOJ (ne šele po koncu response)

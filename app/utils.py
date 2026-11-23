@@ -35,9 +35,15 @@ def generate_csv_template() -> str:
     """
     Generate a CSV template for school data collection.
     """
-    # Based on the requirements in the prompt
-    template = ("First Name,Last Name,School,Grade,Gender,Discipline(s),Event Date (MM/DD/YYYY),Time (seconds),Position (1-30),Notes\n"
-                "e.g., Ana,Novak,OŠ Žirovnica,2.r,Ž,tek 60m Ž,05/20/2026,10.5,5,\n")
+    template = (
+        "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
+        "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
+        "2. Vsako vrstico spodaj izpolni za ENEGA učenca (razred: 2 ali 3; spol: M ali Ž).\n"
+        "3. Disciplina se določi samodejno glede na spol in razred.\n"
+        "4. Datoteko shrani in vrni organizatorju.\n\n"
+        "ŠOLA:\n<ime svoje šole>\n\n"
+        "First Name, Last Name, Grade, Gender\n"
+    )
     return template
 
 

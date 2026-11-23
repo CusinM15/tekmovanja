@@ -1176,31 +1176,31 @@ function izbrisiStartno(id){
 /* ================= CSV / POŠTA / SMTP ================= */
 function prenesiPredlogaCsv(){
   // BOM (\ufeff) na začetku: Excel potem pravilno odpre UTF-8 in Š/Ž/Č niso pokvarjeni.
-  api('/disciplines').then(function(disc){
-    var legenda = 'ID,Disciplina (za koga)\n';
-    for (var i = 0; i < disc.length; i++){
-      var d = disc[i];
-      legenda += d.id + ',' + d.name + ' (' + (d.gender === 'M' ? 'fantje' : 'punce') + ')\n';
-    }
-    var vsebina = '\ufeff' + legenda + '\n' +
-      'First Name,Last Name,School,Grade,Gender,Discipline (ID)\n' +
-      'Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)\n';
-    var blob = new Blob([vsebina], {type: 'text/csv;charset=utf-8'});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'predloga_ucenci.csv';
-    // a mora biti v DOM-u, sicer Firefox/LibreWolf programski a.click()
-    // tiho ignorira download (Chromium je bil tolerantnejši).
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function(){
-      document.body.removeChild(a);
-      URL.revokeObjectURL(a.href);
-    }, 1000);
-    toast('Predloga pripravljena za prenos.', 'ok');
-  }).catch(function(e){ toast('Napaka pri prenosu predloge: ' + e.message, 'napaka'); });
+  var navodila =
+    '*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n' +
+    '1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n' +
+    '2. Vsako vrstico spodaj izpolni za ENEGA učenca:\n' +
+    '   - Ime in priimek (npr. Ana Novak)\n' +
+    '   - Razred: samo 2 ali 3 (brez .r)\n' +
+    '   - Spol: M (fant) ali Ž (punca)\n' +
+    '3. Disciplina se določi samodejno glede na spol in razred — ničesar ni treba vpisovati.\n' +
+    '4. Datoteko shrani in vrni organizatorju.\n\n' +
+    'ŠOLA:\n<ime svoje šole>\n\n' +
+    'First Name, Last Name, Grade, Gender\n';
+  var blob = new Blob([navodila], {type: 'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'predloga_ucenci.csv';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }, 1000);
+  toast('Predloga pripravljena za prenos.', 'ok');
 }
+
 
 function odpriModalUvozCsv(){
   $('modal-vsebina').innerHTML =

@@ -76,10 +76,10 @@ def test_stran_se_nalozi(client):
 
 def test_seed_podatki_obstajajo(client):
     """Ob prvem zagonu mora biti baza napolnjena (tudi v testni bazi)."""
-    assert len(_disciplines(client)) == 8
+    assert len(_disciplines(client)) == 4, "samo 4 discipline (spol×razred)"
     assert len(client.get("/pupils").json()) == 120
-    assert len(_events(client)) == 72, "rezultate dobi LE del nastopajočih (9 × 8 disciplin), ne vsi učenci"
-    assert len(_start_lists(client)) == 16, "vsaka disciplina × 2 razreda (2.r, 3.r) ima štartno listo"
+    assert len(_events(client)) == 36, "rezultate dobi LE del nastopajočih (9 × 4 discipline)"
+    assert len(_start_lists(client)) == 4, "vsaka disciplina (spol×razred) ima 1 štartno listo"
 
 
 def test_kartice_xN_format_za_vsako_disciplino(client):
@@ -90,19 +90,15 @@ def test_kartice_xN_format_za_vsako_disciplino(client):
     ucenci = client.get("/pupils").json()
     nastopi = _ucenci_po_disciplini_in_razredu(ucenci, disc)
 
-    assert len(disc) >= 2, "brez disciplin ni kartic"
+    assert len(disc) == 4, "mora biti 4 discipline (spol×razred)"
     for d in disc:
         x2, N2, x3, N3 = _kartica_stevila(dogodki, d, nastopi)
-        # vrstici, ki ju kartica izpiše:
-        vrstica2 = "2.r: %d/%d" % (x2, N2)
-        vrstica3 = "3.r: %d/%d" % (x3, N3)
-        assert vrstica2.startswith("2.r: ") and "/" in vrstica2, d["name"]
-        assert vrstica3.startswith("3.r: ") and "/" in vrstica3, d["name"]
-        # N = vsi učenci, ki spadajo pod disciplino → mora biti > 0 za OBA razreda,
-        # tudi ko štartne liste za 3.r še ne obstajajo (N ni več odvisen od štartnih list).
-        assert N2 > 0 and N3 > 0, f"disciplina {d['name']}: N mora biti > 0 za 2.r in 3.r (N2={N2}, N3={N3})"
-        assert x2 <= N2, f"disciplina {d['name']}: x(2.r)={x2} ne sme preseči N={N2}"
-        assert x3 <= N3, f"disciplina {d['name']}: x(3.r)={x3} ne sme preseči N={N3}"
+        veljavni = [g.strip() for g in (d["applicable_grades"] or "").split(",")]
+        for razred, x, N in (("2.r", x2, N2), ("3.r", x3, N3)):
+            if razred not in veljavni:
+                continue
+            assert N > 0, f"disciplina {d['name']}: N({razred}) mora biti > 0 (N={N})"
+            assert x <= N, f"disciplina {d['name']}: x({razred})={x} ne sme preseči N={N}"
 
 
 def test_servirana_stran_vsebuje_kodo_kartic_xN(client):
@@ -146,46 +142,47 @@ def test_odstrani_disciplino_z_rezultati(client):
 
 
 def test_uvoz_csv_z_disciplino_in_idempotenca(client):
-    """CSV UVOZ: stolpec Discipline (ID) vpiše učenca na štartne liste;
-    ponovni uvoz iste datoteke ne sme ničesar podvojiti."""
-    csv = (
-        "\ufeff" + LEGENDA + "\n1,tek 60m ♂ (fantje)\n\n"
-        + CSV_HEADER + "\n" + CSV_PRIMER + "\n"
-        + "Testa,Uvozna,OŠ Žirovnica,2.r,M,1 3\n"
-    )
-    r1 = client.post("/import-csv", files={"file": ("test.csv", csv.encode("utf-8"), "text/csv")}).json()
+    """CSV UVOZ (nov format): šola zgoraj, razred 2/3; disciplina se določi SAMODEJNO
+    iz spola+razreda. Ponovni uvoz iste datoteke ne sme ničesar podvojiti."""
+    csv = ("\ufeff"
+           "*** NAVODILA ***\n"
+           "ŠOLA:\nOŠ Žirovnica\n"
+           "\n"
+           "First Name, Last Name, Grade, Gender\n"
+           "Testa,Uvozna,2,Ž\n")
+    r1 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert r1["status"] == "success", r1
     assert r1["records_created"] == 1
-    assert r1["start_entries"] == 2  # ID 1 in 3
+    assert r1["start_entries"] == 1, "samodejno ena disciplina (Dekleta 2.r)"
 
-    r2 = client.post("/import-csv", files={"file": ("test.csv", csv.encode("utf-8"), "text/csv")}).json()
+    r2 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert r2["status"] == "success", r2
     assert r2["records_created"] == 0 and r2["start_entries"] == 0, "ponovni uvoz mora biti idempotenten"
 
 
 def test_uvoz_csv_napaka_ne_shrani_nicesar(client):
-    """CSV UVOZ: neznan ID discipline ali napačen spol -> status error,
-    v bazi se ne sme pojaviti nič (rollback)."""
-    csv = "\ufeff" + CSV_HEADER + "\n" + "Napaka,Uvozna2,OŠ Žirovnica,2.r,M,99\n"
-    r = client.post("/import-csv", files={"file": ("bad.csv", csv.encode("utf-8"), "text/csv")}).json()
+    """CSV UVOZ: neveljaven spol ali razred -> status error, nič se ne shrani (rollback)."""
+    def uvozi(vrstica):
+        csv = ("\ufeffŠOLA:\nOŠ Žirovnica\n\n"
+               "First Name, Last Name, Grade, Gender\n" + vrstica + "\n")
+        return client.post("/import-csv", files={"file": ("b.csv", csv.encode("utf-8"), "text/csv")}).json()
+    r = uvozi("Napaka,Uvozna2,2,X")
     assert r["status"] == "error", r
-    assert not [p for p in client.get("/pupils").json() if p["first_name"] == "Napaka"], \
-        "ob napaki se učenec ne sme shraniti"
-
-    csv2 = "\ufeff" + CSV_HEADER + "\n" + "Mojca,Testna3,OŠ Žirovnica,2.r,Ž,1\n"
-    r2 = client.post("/import-csv", files={"file": ("bad2.csv", csv2.encode("utf-8"), "text/csv")}).json()
+    assert not [p for p in client.get("/pupils").json() if p["first_name"] == "Napaka"]
+    r2 = uvozi("Mojca,Testna3,4,Ž")
     assert r2["status"] == "error", r2
-    assert any("drug spol" in e for e in r2["errors"]), r2
+    assert not [p for p in client.get("/pupils").json() if p["first_name"] == "Mojca"]
 
 
-def test_predloga_vsebuje_id_tabelo_in_stolpec(client):
-    """PREDLOGA: /send-invitations mora vsebovati ID tabelo disciplin in stolpec Discipline (ID)."""
+def test_predloga_vsebuje_glavo_in_sola(client):
+    """PREDLOGA: /send-invitations vsebuje navodila in polje ŠOLA ter glavo
+    (Razred 2/3, brez stolpca Discipline)."""
     j = client.get("/send-invitations").json()
-    t = j["csv_template"]
-    assert LEGENDA in t
-    assert "Discipline (ID)" in t
-    assert "1,tek 60m ♂ (fantje)" in t
-    assert "8,met vorteksa ♀ (punce)" in t
+    gl = j["csv_template"]
+    assert "First Name, Last Name, Grade, Gender" in gl
+    assert "ŠOLA:" in gl
+    assert "*** NAVODILA" in gl
+    assert "Discipline (ID)" not in gl
 
 
 def test_startna_lista_pdf_s_stolpcem_rezultat(client):
@@ -283,7 +280,9 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
     liste (ne ostanejo imena otrok), in ponovni CSV uvoz mora spet delovati.
     (prej je delete pustil sirote v start_list_pupils -> ob ponovnem uvozu UNIQUE
     constraint start_list_pupils in uvoz je padel)."""
-    csv = "\ufeff" + CSV_HEADER + "\n" + "Testa,Uvozna,OŠ Žirovnica,2.r,M,1 3\n"
+    csv = ("\ufeff*** NAVODILA ***\nŠOLA:\nOŠ Prežihov Voranc\n\n"
+           "First Name, Last Name, Grade, Gender\n"
+           "Zala,Mivšek,3,Ž\n")
     r1 = client.post("/import-csv", files={"file": ("t.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert r1["status"] == "success", r1
     # rekordi obstajajo (seed jih ustvari)
@@ -447,3 +446,26 @@ def test_send_emails_endpoint_ne_laze(client, monkeypatch):
     assert "Pošiljanje ni uspelo" in j["message"], j
     assert "poslal" not in j["message"].lower().replace("pošiljanje", ""), j
 
+
+def test_uvoz_novega_formata_sola_zgoraj_in_razred_23(client):
+    """NOVI CSV format: šola se vpiše SAMO ENKRAT zgoraj (polje »ŠOLA:«),
+    v glavi ni stolpca School, razred je samo 2 ali 3 (brez »\.r«)."""
+    csv = ("\ufeff"
+           "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\r\n"
+           "1. V polje ŠOLA zgoraj vpiši ime šole.\r\n"
+           "ŠOLA:\r\n"
+           "OŠ Žirovnica\r\n"
+           "\r\n"
+           "First Name, Last Name, Grade, Gender, Discipline (ID)\r\n"
+           "Nova,Učenka,2,Ž,2 4\r\n"
+           "Nov,Deček,3,M,1 3\r\n") 
+    r = client.post("/import-csv", files={"file": ("novi.csv", csv.encode("utf-8"), "text/csv")})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["status"] == "success", j
+    assert j["records_created"] == 2, j
+    ucenci = client.get("/pupils").json()
+    n = [x for x in ucenci if x["first_name"] == "Nova"]
+    d = [x for x in ucenci if x["first_name"] == "Nov"]
+    assert n and n[0]["grade"] == "2.r" and n[0]["school_name"] == "OŠ Žirovnica", n
+    assert d and d[0]["grade"] == "3.r" and d[0]["school_name"] == "OŠ Žirovnica", d
