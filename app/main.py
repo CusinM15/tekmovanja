@@ -671,7 +671,7 @@ def _csv_template():
         "   - Ime in priimek (npr. Ana Novak)\n"
         "   - Razred: samo 2 ali 3 (brez .r)\n"
         "   - Spol: M (fant) ali Ž (punca)\n"
-        "   - Discipline: ID-je iz tabele zgoraj (1-4), ločene z vejico ali presledkom — npr. 1,2,4 (učenec nastopa v teh športih)\n"
+        "   - Discipline: ID-je iz tabele zgoraj (1-4), ločene s PRESLEDKOM — npr. 1 2 4 (učenec nastopa v teh športih)\n"
         "3. Datoteko shrani in vrni organizatorju.\n"
         "\n"
     )
