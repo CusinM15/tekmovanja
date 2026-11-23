@@ -94,48 +94,47 @@ def _seed_defaults():
                 db.add(School(name=ime, email=email, status=SchoolStatus.ACTIVE.value))
         db.commit()
 
-        # --- Discipline (iz prvi_prompt.md / settings.py), idempotentno ---
-        # Če obstaja stara disciplina brez ikone (npr. "tek 60m M" / "tek 400m ž"),
-        # jo POSODOBIMO na novo ime z ikono (ohrani id + rezultate) namesto da
-        # ustvarimo novo in podvojimo discipline.
-        vse_disc = {d.name: d for d in db.query(Discipline).all()}
-        for novo_ime, razredi in app_config.default_disciplines.items():
-            if novo_ime in vse_disc:
-                continue  # že obstaja z ikono
-            cilj = vse_disc.get(novo_ime)
-            gender = "Ž" if novo_ime.rstrip().endswith("♀") else "M"
-            # poišči staro ime brez ikone (npr. "tek 60m M" ← "tek 60m ♂")
-            staro = None
-            if novo_ime.endswith("♂"):
-                staro = novo_ime[:-1].rstrip() + " M"
-                staro = staro.replace(" M", " M")
-            elif novo_ime.endswith("♀"):
-                staro = novo_ime[:-1].rstrip() + " Ž"
-            staro_alt = None
-            if novo_ime.endswith("♂"):
-                staro_alt = novo_ime[:-2].rstrip() + " M"
-            elif novo_ime.endswith("♀"):
-                staro_alt = novo_ime[:-2].rstrip() + " ž"
-            obstojec = vse_disc.get(staro) or vse_disc.get(staro_alt)
-            if obstojec:
-                obstojec.name = novo_ime
-                obstojec.gender = gender
-                obstojec.applicable_grades = ",".join(razredi)
-                vse_disc[novo_ime] = obstojec
-            else:
-                nova = Discipline(name=novo_ime, gender=gender,
-                                  applicable_grades=",".join(razredi))
-                db.add(nova)
-                vse_disc[novo_ime] = nova
-        db.commit()
+        # --- Discipline: privzete ustvarimo SAMO ob prvem zagonu (prazna tabela). ---
+        # Če uporabnik disciplino izbriše, se ob restartu NE sme vrniti.
+        if db.query(Discipline).count() == 0:
+            vse_disc = {d.name: d for d in db.query(Discipline).all()}
+            for novo_ime, razredi in app_config.default_disciplines.items():
+                if novo_ime in vse_disc:
+                    continue  # že obstaja z ikono
+                cilj = vse_disc.get(novo_ime)
+                gender = "Ž" if novo_ime.rstrip().endswith("♀") else "M"
+                # poišči staro ime brez ikone (npr. "tek 60m M" ← "tek 60m ♂")
+                staro = None
+                if novo_ime.endswith("♂"):
+                    staro = novo_ime[:-1].rstrip() + " M"
+                    staro = staro.replace(" M", " M")
+                elif novo_ime.endswith("♀"):
+                    staro = novo_ime[:-1].rstrip() + " Ž"
+                staro_alt = None
+                if novo_ime.endswith("♂"):
+                    staro_alt = novo_ime[:-2].rstrip() + " M"
+                elif novo_ime.endswith("♀"):
+                    staro_alt = novo_ime[:-2].rstrip() + " ž"
+                obstojec = vse_disc.get(staro) or vse_disc.get(staro_alt)
+                if obstojec:
+                    obstojec.name = novo_ime
+                    obstojec.gender = gender
+                    obstojec.applicable_grades = ",".join(razredi)
+                    vse_disc[novo_ime] = obstojec
+                else:
+                    nova = Discipline(name=novo_ime, gender=gender,
+                                      applicable_grades=",".join(razredi))
+                    db.add(nova)
+                    vse_disc[novo_ime] = nova
+            db.commit()
 
-        # Discipline so 4 športi — nevtralni spol (katerikoli); spol+razred iz vrstice
-        # določita tekmovalno skupino (šport × spol × razred).
-        for _ime in app_config.default_disciplines:
-            _dd = db.query(Discipline).filter(Discipline.name == _ime).first()
-            if _dd:
-                _dd.gender = ""
-        db.commit()
+            # Discipline so 4 športi — nevtralni spol (katerikoli); spol+razred iz vrstice
+            # določita tekmovalno skupino (šport × spol × razred).
+            for _ime in app_config.default_disciplines:
+                _dd = db.query(Discipline).filter(Discipline.name == _ime).first()
+                if _dd:
+                    _dd.gender = ""
+            db.commit()
 
         # --- Učenci + rezultati + rekordi + štartne liste, samo če ni učencev ---
         if db.query(Pupil).count() == 0:

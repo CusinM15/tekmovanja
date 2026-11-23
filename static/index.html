@@ -359,6 +359,7 @@ function preklopiTab(ime){
   var strani = document.querySelectorAll('.stran');
   for (var j = 0; j < strani.length; j++) strani[j].classList.toggle('aktivna', strani[j].id === 'stran-' + ime);
   if (ime === 'ucenci') prikaziUcence();
+  if (ime === 'discipline') natovoriDiscipline();
   if (ime === 'rekordi') natovoriRekorde();
   if (ime === 'rezultati') natovoriRezultate();
   if (ime === 'startne') natovoriStartne();
@@ -787,7 +788,9 @@ function shraniDisciplino(id){
     : api('/disciplines', 'POST', pod);
   zahteva.then(function(){
     toast(id ? 'Disciplina posodobljena.' : 'Disciplina dodana.', 'ok');
-    zapriModal(); natovoriDiscipline(); natovoriPregled();
+    zapriModal();
+    // vse podstrani berejo sveže iz baze — da se sprememba pokaže povsod
+    natovoriDiscipline(); natovoriPregled(); natovoriRezultate(); natovoriStartne(); natovoriRekorde();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
@@ -795,7 +798,8 @@ function izbrisiDisciplino(id){
   if (!confirm('Ali res želite odstraniti to disciplino?\n\nIzbrišejo se tudi njeni rezultati, rekordi in štartne liste.')) return;
   api('/disciplines/' + id, 'DELETE').then(function(r){
     toast(r.message || 'Disciplina odstranjena.', 'ok');
-    natovoriDiscipline(); natovoriPregled();
+    // sinhronizacija: izbrisano disciplina se umakne POVSOD (rezultati, štartne liste, rekordi)
+    natovoriDiscipline(); natovoriPregled(); natovoriRezultate(); natovoriStartne(); natovoriRekorde();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
