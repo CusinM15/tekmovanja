@@ -374,6 +374,7 @@ def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
             "host": "smtp.arnes.si", "port": "587",
             "user": "ime.priimek", "password": "sifra123",
             "from_addr": "ime.priimek@arnes.si",
+            "sender_name": "Ime Priimek",
         })
         assert r.status_code == 200, r.text
         assert app_config.smtp_user == "ime.priimek"
@@ -386,6 +387,7 @@ def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
         assert g2["from_addr"] == "ime.priimek@arnes.si"
         assert g2["has_password"] is True
         assert g2["password"] == "sifra123", "geslo se vrne za prikaz (maskirano) v obrazcu"
+        assert g2["sender_name"] == "Ime Priimek", "ime in priimek pošiljatelja za podpis"
 
         # POST s PRAZNIM geslom → ohrani obstoječe (200)
         r2 = client.post("/api/smtp", data={

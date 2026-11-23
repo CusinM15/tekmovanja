@@ -16,6 +16,7 @@ DEFAULT_CONFIG = {
         "user": None,
         "password": None,
         "from": None,                # Naslov pošiljatelja (From) — dejanski e-naslov
+        "sender_name": None,        # Ime in priimek pošiljatelja (za podpis e-pošte)
         "tls": True,
     },
     "database": {
@@ -55,6 +56,7 @@ class AppConfig:
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_from: Optional[str] = None   # Naslov pošiljatelja (From) — dejanski e-naslov
+    smtp_sender_name: Optional[str] = None   # Ime in priimek pošiljatelja (podpis e-pošte)
     smtp_tls: bool = True
     
     # Schools
@@ -99,6 +101,7 @@ class AppConfig:
                 if _s.get("user"): self.smtp_user = _s["user"]
                 if _s.get("password"): self.smtp_password = _s["password"]
                 self.smtp_from = (_s.get("from") or "").strip() or None
+                self.smtp_sender_name = (_s.get("sender_name") or "").strip() or None
                 if _s.get("host"): self.smtp_host = _s["host"]
                 # Migracija: stari napačni privzeti strežnik → pravilen Arnes SMTP
                 if self.smtp_host == "smtp.arne.gov.si":
@@ -128,6 +131,7 @@ class AppConfig:
             "user": self.smtp_user,
             "password": self.smtp_password,
             "from": self.smtp_from,
+            "sender_name": self.smtp_sender_name,
             "tls": self.smtp_tls,
         }
     

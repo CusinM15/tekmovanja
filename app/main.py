@@ -813,13 +813,16 @@ def _napaka_posiljanja(e):
 
 
 def _posiljatelj_ime():
-    """Ime in priimek pošiljatelja iz SMTP uporabniškega imena
-    (npr. 'ime.priimek' ali 'ime_priimek' -> 'Ime Priimek')."""
+    """Ime in priimek pošiljatelja za podpis: najprej iz polja 'Ime in priimek'
+    (Nastavitve e-pošte); sicer iz SMTP uporabniškega imena (ime.priimek);
+    sicer 'Organizator tekmovanja'."""
+    ime = (getattr(app_config, "smtp_sender_name", None) or "").strip()
+    if ime:
+        return ime
     vir = (app_config.smtp_user or "").strip()
     if not vir:
         return "Organizator tekmovanja"
-    ime = vir.replace(".", " ").replace("_", " ").replace("-", " ").strip()
-    return " ".join(w.capitalize() for w in ime.split() if w)
+    return " ".join(w.capitalize() for w in vir.replace(".", " ").replace("_", " ").replace("-", " ").split() if w)
 
 
 # === CSV IMPORT ===
@@ -1433,6 +1436,7 @@ def get_smtp_settings_api(db=Depends(get_db)):
         "port": app_config.smtp_port,
         "user": app_config.smtp_user or "",
         "from_addr": app_config.smtp_from or "",
+        "sender_name": app_config.smtp_sender_name or "",
         "password": app_config.smtp_password or "",
         "has_password": bool(app_config.smtp_password),
     }
@@ -1445,6 +1449,7 @@ def save_smtp_settings(
     user: str = Form(...),
     password: str = Form(""),
     from_addr: str = Form(None),
+    sender_name: str = Form(None),
     tls: int = Form(1),
     db=Depends(get_db)
 ):
@@ -1456,6 +1461,7 @@ def save_smtp_settings(
     app_config.smtp_port = port
     app_config.smtp_tls = bool(tls)
     app_config.smtp_from = (from_addr or "").strip() or None
+    app_config.smtp_sender_name = (sender_name or "").strip() or None
     if password:
         app_config.set_smtp_credentials(user.strip(), password)
     else:

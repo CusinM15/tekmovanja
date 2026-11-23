@@ -1241,6 +1241,7 @@ function odpriModalSmtp(){
       '<div class="polje"><label>Vrata</label><input id="f-smtp-port" type="number" value="' + (s.port || 587) + '"></div>' +
       '<div class="polje"><label>Uporabniško ime (kratko ime)</label><input id="f-smtp-user" value="' + esc(s.user || '') + '" placeholder="npr. ime.priimek"></div>' +
       '<div class="polje"><label>Naslov pošiljatelja (dejanski e-naslov)</label><input id="f-smtp-from" value="' + esc(s.from_addr || '') + '" placeholder="npr. ime.priimek@arnes.si"></div>' +
+      '<div class="polje"><label>Ime in priimek (za podpis e-pošte)</label><input id="f-smtp-sender-name" value="' + esc(s.sender_name || '') + '" placeholder="npr. Matej Cusin"></div>' +
       '<div class="polje"><label>Geslo' + (s.has_password ? ' (shranjeno — klikni 👁 za prikaz)' : '') + '</label>' +
         '<div style="display:flex;gap:6px;align-items:center">' +
         '<input id="f-smtp-pass" type="password" value="' + esc(s.password || '') + '" style="flex:1" autocomplete="new-password">' +
@@ -1269,7 +1270,8 @@ function shraniSmtp(){
     port: parseInt($('f-smtp-port').value, 10) || 587,
     user: $('f-smtp-user').value.trim(),
     password: $('f-smtp-pass').value,
-    from_addr: $('f-smtp-from').value.trim()
+    from_addr: $('f-smtp-from').value.trim(),
+    sender_name: $('f-smtp-sender-name').value.trim()
   };
   if (!pod.user){ toast('Vnesite uporabniško ime.', 'napaka'); return; }
   // Geslo: če je prazno, backend ohrani obstoječe (če obstaja) — drugače napaka.
