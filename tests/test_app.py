@@ -522,3 +522,6 @@ def test_results_pdf_uvodna_stran_in_16_skupin(client):
     # zadnja stran: razvrstitev šol po točkah
     assert "Rezultati po šolah" in src
     assert "points_for_position" in src, "točke po šolah se računajo iz mest"
+    # SUPER STANKO: rekordi, ena stran na razred
+    assert "SUPER STANKO" in src
+    assert '("2.r", "3.r")' in src, "ena stran na razred (2.r in 3.r)"
