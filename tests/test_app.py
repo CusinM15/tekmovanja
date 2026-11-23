@@ -508,3 +508,6 @@ def test_results_pdf_uvodna_stran_in_16_skupin(client):
     assert "Sodelujoče šole" in src
     assert "Pregled tekmovalnih skupin" in src
     assert "PageBreak" in src, "uvodna stran mora biti ločena od rezultatov"
+    # zadnja stran: razvrstitev šol po točkah
+    assert "Rezultati po šolah" in src
+    assert "points_for_position" in src, "točke po šolah se računajo iz mest"
