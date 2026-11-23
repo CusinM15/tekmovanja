@@ -35,6 +35,7 @@ def _sync_records_after_result(db, discipline_id, grade, pupil, time):
             pupil_id=pupil.id,
             pupil_name=f"{pupil.first_name} {pupil.last_name}",
             pupil_grade=grade,
+            pupil_gender=pupil.gender,
             school_name=pupil.school.name if pupil.school else None,
             time=float(time),
             date_recorded=datetime.utcnow(),
@@ -43,6 +44,7 @@ def _sync_records_after_result(db, discipline_id, grade, pupil, time):
     canvas = db.query(Record).filter(
         Record.discipline_id == discipline_id,
         Record.pupil_grade == grade,
+        Record.pupil_gender == pupil.gender,
     ).all()
     if not canvas:
         dodaj()
@@ -70,16 +72,19 @@ def points_for_position(position):
         return 0
 
 
-def _reassign_positions_for(db, discipline_id, grade):
-    """Mesto se določi SAMODEJNO glede na čas znotraj (disciplina, razred):
+def _reassign_positions_for(db, discipline_id, grade, spol=None):
+    """Mesto se določi SAMODEJNO glede na čas znotraj (disciplina, spol, razred):
     hitrejši čas = boljše mesto; izenačen čas = isti mesto (competition ranking)."""
     from app.models import CompetitionEvent, Pupil
     if not grade or grade not in ("2.r", "3.r"):
         return
-    evts = db.query(CompetitionEvent).join(CompetitionEvent.pupil).filter(
+    q = db.query(CompetitionEvent).join(CompetitionEvent.pupil).filter(
         CompetitionEvent.discipline_id == discipline_id,
         Pupil.grade == grade,
-    ).order_by(CompetitionEvent.time.asc(), CompetitionEvent.id.asc()).all()
+    )
+    if spol:
+        q = q.filter(Pupil.gender == spol)
+    evts = q.order_by(CompetitionEvent.time.asc(), CompetitionEvent.id.asc()).all()
     prev = None
     mesto = 0
     for idx, ev in enumerate(evts, start=1):
@@ -92,10 +97,10 @@ def _reassign_positions_for(db, discipline_id, grade):
 def _reassign_all_positions(db):
     """Preračuna mesta za VSE (disciplina, razred) — backfill ob zagonu."""
     from app.models import CompetitionEvent, Pupil
-    combos = db.query(CompetitionEvent.discipline_id, Pupil.grade)\
+    combos = db.query(CompetitionEvent.discipline_id, Pupil.grade, Pupil.gender)\
         .join(CompetitionEvent.pupil).distinct().all()
-    for dis_id, grade in combos:
-        _reassign_positions_for(db, dis_id, grade)
+    for dis_id, grade, spol in combos:
+        _reassign_positions_for(db, dis_id, grade, spol)
 
 
 class SchoolService:
@@ -381,7 +386,7 @@ class EventService:
         db.add(ev)
         db.flush()
         # Mesto določi samodejno po času znotraj (disciplina, razred)
-        _reassign_positions_for(db, discipline_id, pupil.grade)
+        _reassign_positions_for(db, discipline_id, pupil.grade, pupil.gender)
         # avtomatska sinhronizacija rekordov (boljši/enak čas)
         _try_sync(db, ev, pupil, discipline)
         db.commit()
@@ -414,7 +419,7 @@ class EventService:
             ev.discipline_id = discipline_id
         from datetime import datetime
         ev.updated_at = datetime.utcnow()
-        _reassign_positions_for(db, ev.discipline_id, ev.pupil.grade if ev.pupil else None)
+        _reassign_positions_for(db, ev.discipline_id, ev.pupil.grade if ev.pupil else None, ev.pupil.gender if ev.pupil else None)
         _try_sync(db, ev, ev.pupil, ev.discipline)
         db.commit()
         return ev.to_dict()
@@ -427,8 +432,9 @@ class EventService:
             raise HTTPException(status_code=404, detail="Rezultat ne obstaja.")
         dis_id = ev.discipline_id
         grade = ev.pupil.grade if ev.pupil else None
+        spol = ev.pupil.gender if ev.pupil else None
         db.delete(ev)
-        _reassign_positions_for(db, dis_id, grade)
+        _reassign_positions_for(db, dis_id, grade, spol)
         db.commit()
         return {"message": f"Rezultat {event_id} izbrisan."}
 
@@ -531,7 +537,7 @@ class StartListService:
         return [l.to_dict() for l in db.query(StartList).all()]
 
     @staticmethod
-    def create(db: Session, discipline_id, grade, event_date, pupil_ids) -> dict:
+    def create(db: Session, discipline_id, grade, gender="M", event_date=None, pupil_ids=None) -> dict:
         from fastapi import HTTPException
         from datetime import datetime
         disc = db.query(Discipline).get(discipline_id)
@@ -543,10 +549,10 @@ class StartListService:
         if not pupil_list:
             raise HTTPException(status_code=400, detail="Ni učencev za navedene ID-je.")
         try:
-            event_dt = datetime.fromisoformat(event_date.replace('Z', '+00:00'))
+            event_dt = datetime.fromisoformat(event_date.replace('Z', '+00:00')) if event_date else datetime.now()
         except Exception:
             raise HTTPException(status_code=400, detail="Napačen datum. Uporabi ISO (YYYY-MM-DDTHH:MM:SS).")
-        sl = StartList(discipline_id=discipline_id, grade=grade, event_date=event_dt)
+        sl = StartList(discipline_id=discipline_id, grade=grade, gender=gender, event_date=event_dt)
         sl.pupils = pupil_list
         db.add(sl)
         db.commit()

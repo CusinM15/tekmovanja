@@ -227,6 +227,7 @@ class Record(Base):
     # brisanje učencev oz. podatkov in še vedno pokaže ime/razred/šolo.
     pupil_name = Column(String, nullable=True)
     pupil_grade = Column(String, nullable=True)
+    pupil_gender = Column(String, nullable=True)
     school_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -241,6 +242,7 @@ class Record(Base):
             "pupil_id": self.pupil_id,
             "pupil_name": self.pupil_name or (f"{self.pupil.first_name} {self.pupil.last_name}" if self.pupil else None),
             "pupil_grade": self.pupil_grade or (self.pupil.grade if self.pupil else None),
+            "pupil_gender": self.pupil_gender or (self.pupil.gender if self.pupil else None),
             "school_name": self.school_name or (self.pupil.school.name if self.pupil and self.pupil.school else None),
             "time": self.time,
             "date_recorded": self.date_recorded.isoformat() if self.date_recorded else None,
@@ -268,6 +270,7 @@ class StartList(Base):
     id = Column(Integer, primary_key=True, index=True)
     discipline_id = Column(Integer, ForeignKey("disciplines.id"), nullable=False, index=True)
     grade = Column(String(20), nullable=False)  # e.g. '2.r'
+    gender = Column(String(2), nullable=False)  # 'M' ali 'Ž' — tekmovalna skupina (šport×spol×razred)
     event_date = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

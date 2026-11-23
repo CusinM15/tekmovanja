@@ -820,11 +820,14 @@ function natovoriRezultate(){
 // Število vseh učencev, ki spadajo pod disciplino v določenem razredu:
 // gender discipline = gender učenca (razred ločuje po applicable_grades).
 function stejUcenceDiscipline(ucenci, d, razred){
+  // N = vsi učenci, ki spadajo pod to disciplino v razredu.
+  // Šport je nevtralen (d.gender == "" ali nedoločen) -> štejejo učenci OBEH spolov.
   var n = 0;
+  var nevtralen = !d.gender || d.gender === '';
   for (var u = 0; u < ucenci.length; u++){
     var p = ucenci[u];
-    if (p.gender !== d.gender) continue;
     if (p.grade !== razred) continue;
+    if (!nevtralen && p.gender !== d.gender) continue;
     n++;
   }
   return n;

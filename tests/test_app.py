@@ -83,7 +83,7 @@ def test_seed_podatki_obstajajo(client):
     assert len(_disciplines(client)) == 4, "samo 4 discipline (športi: tek 60m, tek 400m, skok, met)"
     assert len(client.get("/pupils").json()) == 120
     assert len(_events(client)) == 36, "rezultate dobi LE del nastopajočih (9 × 4 discipline)"
-(spol×razred) ima 1 štartno listo"
+    assert len(_start_lists(client)) == 16, "4 športi × 2 razreda × 2 spola = 16 štartnih list"
 
 
 def test_kartice_xN_format_za_vsako_disciplino(client):
@@ -208,47 +208,50 @@ def test_startna_lista_pdf_s_stolpcem_rezultat(client):
 
 
 def test_avtomatizirani_rekordi_ob_vpisu_rezultata(client):
-    """Ob vpisu rezultata prek /events se tabela rekordov samodejno posodobi:
+    """Ob vpisu rezultata prek /events se tabela rekordov samodejno posodobi
+    (skupina = šport × spol × razred):
     - boljši čas  -> nadomesti (stara vrstica izgine),
-    - enak čas    -> nova vrstica (tie, ista disciplina ima lahko več vrstic),
+    - enak čas    -> nova vrstica (tie, ista skupina ima lahko več vrstic),
     - slabši      -> nespremenjeno."""
     ucenci = client.get("/pupils").json()
     disc = client.get("/disciplines").json()
     rek = client.get("/records").json()
-    target = next(r for r in rek if r["pupil_grade"])
-    disc_id, grade = target["discipline_id"], target["pupil_grade"]
-    d = next(x for x in disc if x["id"] == disc_id)
-    kandidat = next(u for u in ucenci if u["grade"] == grade and u["gender"] == d["gender"])
+    target = next(r for r in rek if r["pupil_grade"] and r.get("pupil_gender"))
+    disc_id, grade, spol = target["discipline_id"], target["pupil_grade"], target["pupil_gender"]
 
-    # 1) boljši rezultat -> nadomesti vse rekorde te discipline+razreda
-    trenutni = [r for r in client.get("/records").json()
-                if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    def filtriraj():
+        return [r for r in client.get("/records").json()
+                if r["discipline_id"] == disc_id and r["pupil_grade"] == grade
+                and r["pupil_gender"] == spol]
+
+    kandidat = next(u for u in ucenci if u["grade"] == grade and u["gender"] == spol)
+
+    # 1) boljši rezultat -> nadomesti vse rekorde te skupine
+    trenutni = filtriraj()
     best = min(x["time"] for x in trenutni)
     boljsi = round(best - 1.0, 2)
     r1 = client.post("/events", data={"pupil_id": kandidat["id"], "discipline_id": disc_id,
                                       "time": boljsi, "position": 1})
     assert r1.status_code == 200, r1.text
-    od = [r for r in client.get("/records").json()
-          if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    od = filtriraj()
     assert len(od) == 1 and abs(od[0]["time"] - boljsi) < 1e-9, f"boljši mora nadomestiti: {od}"
 
     # 2) enak čas (drug učenec) -> nova vrstica
     drugi = next(u for u in ucenci if u["id"] != kandidat["id"]
-                 and u["grade"] == grade and u["gender"] == d["gender"])
+                 and u["grade"] == grade and u["gender"] == spol)
     r2 = client.post("/events", data={"pupil_id": drugi["id"], "discipline_id": disc_id,
                                       "time": boljsi, "position": 2})
     assert r2.status_code == 200, r2.text
-    od2 = [r for r in client.get("/records").json()
-           if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    od2 = filtriraj()
     assert len(od2) == 2, f"enak čas -> 2 vrstici: {od2}"
 
     # 3) slabši -> nespremenjeno (ostaneta 2)
     r3 = client.post("/events", data={"pupil_id": kandidat["id"], "discipline_id": disc_id,
                                       "time": boljsi + 1.5, "position": 3})
     assert r3.status_code == 200, r3.text
-    od3 = [r for r in client.get("/records").json()
-           if r["discipline_id"] == disc_id and r["pupil_grade"] == grade]
+    od3 = filtriraj()
     assert len(od3) == 2, f"slabši -> nespremenjeno: {od3}"
+
 
 def test_avtomatsko_mesto_in_tocke_po_solah(client):
     """Mesto se določi SAMODEJNO ob vpisu rezultata (uporabnik ga ne vpisuje);

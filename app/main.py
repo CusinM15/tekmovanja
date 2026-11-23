@@ -48,18 +48,19 @@ def _ensure_start_lists(db):
     discs = db.query(Discipline).all()
     for d in discs:
         grades = [g.strip() for g in (d.applicable_grades or "").split(",") if g.strip()]
-        obstoj = {sl.grade for sl in db.query(StartList).filter(StartList.discipline_id == d.id).all()}
+        obstoj = {(sl.grade, sl.gender) for sl in db.query(StartList).filter(StartList.discipline_id == d.id).all()}
         for grade in grades:
-            if grade in obstoj:
-                continue
-            kandidati = db.query(Pupil).filter(
-                Pupil.gender == d.gender, Pupil.grade == grade
-            ).order_by(Pupil.id).all()
-            if not kandidati:
-                continue
-            nova = StartList(discipline_id=d.id, grade=grade, event_date=datetime.now())
-            nova.pupils = kandidati[:15]
-            db.add(nova)
+            for spol in ("M", "Ž"):
+                if (grade, spol) in obstoj:
+                    continue
+                kandidati = db.query(Pupil).filter(
+                    Pupil.gender == spol, Pupil.grade == grade
+                ).order_by(Pupil.id).all()
+                if not kandidati:
+                    continue
+                nova = StartList(discipline_id=d.id, grade=grade, gender=spol, event_date=datetime.now())
+                nova.pupils = kandidati[:15]
+                db.add(nova)
 
 
 
@@ -68,9 +69,10 @@ def _backfill_record_snapshots(db):
     po brisanju učenca oz. podatkov še vedno pokaže ime. Idempotentno."""
     changed = False
     for r in db.query(Record).all():
-        if r.pupil and (not r.pupil_name or not r.pupil_grade):
+        if r.pupil and (not r.pupil_name or not r.pupil_grade or not r.pupil_gender):
             r.pupil_name = f"{r.pupil.first_name} {r.pupil.last_name}"
             r.pupil_grade = r.pupil.grade
+            r.pupil_gender = r.pupil.gender
             r.school_name = r.pupil.school.name if r.pupil.school else None
             changed = True
     if changed:
@@ -125,6 +127,14 @@ def _seed_defaults():
                                   applicable_grades=",".join(razredi))
                 db.add(nova)
                 vse_disc[novo_ime] = nova
+        db.commit()
+
+        # Discipline so 4 športi — nevtralni spol (katerikoli); spol+razred iz vrstice
+        # določita tekmovalno skupino (šport × spol × razred).
+        for _ime in app_config.default_disciplines:
+            _dd = db.query(Discipline).filter(Discipline.name == _ime).first()
+            if _dd:
+                _dd.gender = ""
         db.commit()
 
         # --- Učenci + rezultati + rekordi + štartne liste, samo če ni učencev ---
@@ -204,24 +214,24 @@ def _seed_defaults():
                                             time=cas, position=mesto))
             db.commit()
 
-            # Rekordi: za VSAKO disciplino in VSAK razred posebej (2.r, 3.r)
+            # Rekordi: za VSAKO disciplino × spol × razred (16 skupin)
             for disc_ime, disc_id in disc.items():
-                je_fant = ("♂" in disc_ime) or (disc_ime.rstrip().endswith("M"))
-                pool = ucenci_m if je_fant else ucenci_z
-                for razred in ("2.r", "3.r"):
-                    evts = db.query(CompetitionEvent).filter(
-                        CompetitionEvent.discipline_id == disc_id
-                    ).all()
-                    best = None
-                    for e in evts:
-                        pp = db.query(Pupil).get(e.pupil_id)
-                        if pp and pp.grade == razred:
-                            if best is None or e.time < best.time:
-                                best = e
-                    if best:
-                        db.add(Record(discipline_id=disc_id, pupil_id=best.pupil_id,
-                                      time=best.time, date_recorded=_dt(2026, 5, 18),
-                                      notes=f"Rekord tekmovanja ({razred})"))
+                for spol in ("M", "Ž"):
+                    for razred in ("2.r", "3.r"):
+                        evts = db.query(CompetitionEvent).filter(
+                            CompetitionEvent.discipline_id == disc_id
+                        ).all()
+                        best = None
+                        for e in evts:
+                            pp = db.query(Pupil).get(e.pupil_id)
+                            if pp and pp.grade == razred and pp.gender == spol:
+                                if best is None or e.time < best.time:
+                                    best = e
+                        if best:
+                            db.add(Record(discipline_id=disc_id, pupil_id=best.pupil_id,
+                                          time=best.time, date_recorded=_dt(2026, 5, 18),
+                                          pupil_gender=spol,
+                                          notes=f"Rekord tekmovanja ({razred}, {'fantje' if spol == 'M' else 'punce'})"))
             db.commit()
 
             # Štartne liste za vsako disciplino × razred ustvari _ensure_start_lists spodaj
@@ -596,6 +606,7 @@ def list_records(db=Depends(get_db)):
 def create_start_list(
     discipline_id: int = Form(...),
     grade: str = Form(...),
+    gender: str = Form("M"),
     event_date: str = Form(...),  # ISO format datetime
     pupil_ids: str = Form(""),   # CSV števil učencev, npr. "1,5,9"
     db=Depends(get_db)
@@ -625,6 +636,7 @@ def create_start_list(
     start_list = StartList(
         discipline_id=discipline_id,
         grade=grade,
+        gender=gender,
         event_date=event_dt,
     )
     start_list.pupils = pupil_list
@@ -650,8 +662,8 @@ def list_start_lists(db=Depends(get_db)):
 
 
 def _csv_template():
-    """CSV predloga za šole: navodila + polje »ŠOLA« (šola se vpiše ENKRAT) + glava.
-    Razred samo 2 ali 3 (brez ».r«); disciplina se določi SAMODEJNO iz spola+razreda."""
+    """CSV predloga: 4 športi (ID 1-4), šola enkrat zgoraj, razred 2/3, spol M/Ž,
+    stolpec Discipline = ID-ji 1-4 (ločeni z vejico, npr. 1,2,4); skupina = šport×spol×razred."""
     navodila = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
@@ -659,32 +671,30 @@ def _csv_template():
         "   - Ime in priimek (npr. Ana Novak)\n"
         "   - Razred: samo 2 ali 3 (brez .r)\n"
         "   - Spol: M (fant) ali Ž (punca)\n"
-        "3. Disciplina se določi samodejno glede na spol in razred — ničesar ni treba vpisovati.\n"
-        "4. Datoteko shrani in vrni organizatorju.\n"
+        "   - Discipline: ID-je iz tabele spodaj, ločene z VEJICO — npr. 1,2,4 (učenec nastopa v teh športih)\n"
+        "3. Datoteko shrani in vrni organizatorju.\n"
         "\n"
     )
     return ("\ufeff" + navodila +
             "ŠOLA:\n<ime svoje šole>\n\n" +
-            "First Name, Last Name, Grade, Gender\n")
+            "ID,Disciplina (šport)\n"
+            "1,tek 60m\n2,tek 400m\n3,skok v daljino\n4,met vorteksa\n\n" +
+            "First Name, Last Name, Grade, Gender, Discipline (IDs)\n")
 
 
-# 4 discipline = kombinacije (spol, razred): vsaka vrsta iz CSV gre v natanko 1 disciplino
-SPOL_RAZRED_DISC = {
-    ("M", "2.r"): "Fantje 2. r ♂",
-    ("M", "3.r"): "Fantje 3. r ♂",
-    ("Ž", "2.r"): "Dekleta 2. r ♀",
-    ("Ž", "3.r"): "Dekleta 3. r ♀",
-}
+# 4 discipline = 4 športi (ID 1-4); spol+razred iz vrstice določita tekmovalno
+# skupino (šport × spol × razred). CSV v stolpec Discipline navaja ID-je (1-4).
+DEFAULT_DISCIPLINE_ORDER = ["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"]
 
 
-def _disciplina_za(db, spol, razred):
-    """Vrne disciplino, ki ustreza (spol, razred); ustvari jo, če še ne obstaja."""
-    ime = SPOL_RAZRED_DISC.get((spol, razred))
-    if not ime:
+def _disciplina_po_id(db, disc_id):
+    """Vrne disciplino za ID 1-4 (šport); ustvari jo, če še ni v bazi."""
+    if not 1 <= disc_id <= 4:
         return None
+    ime = DEFAULT_DISCIPLINE_ORDER[disc_id - 1]
     d = db.query(Discipline).filter(Discipline.name == ime).first()
     if not d:
-        d = Discipline(name=ime, gender=spol, applicable_grades=razred)
+        d = Discipline(name=ime, gender="", applicable_grades="2.r,3.r")
         db.add(d)
         db.flush()
     return d
@@ -973,25 +983,44 @@ async def import_csv(
                 "pupil_id": pupil.id,
             })
 
-        # Po novem: disciplina se določi SAMODEJNO iz spola+razreda (4 discipline:
-        # M-2.r, M-3.r, Ž-2.r, Ž-3.r) — v CSV ni več stolpca Discipline.
-        disc = _disciplina_za(db, gender, grade)
-        if disc is None:
-            errors.append(f"Vrstica {i}: za spol '{gender}' in razred '{grade}' ni ustrezne discipline.")
+        # Discipline = športi (ID 1-4) iz stolpca Discipline (ločeni z vejico, npr. 1,2,4);
+        # tekmovalna skupina = (šport, spol, razred) — spol+razred iz vrstice.
+        disc_cell = (row[idx_disc].strip() if idx_disc >= 0 and idx_disc < len(row) else "")
+        disc_ids = []
+        for del_id in re.split(r"[,; ]+", disc_cell):
+            del_id = del_id.strip()
+            if not del_id:
+                continue
+            try:
+                did = int(del_id)
+            except ValueError:
+                errors.append(f"Vrstica {i}: disciplina '{del_id}' ni številka (ID 1-4).")
+                continue
+            if not 1 <= did <= 4:
+                errors.append(f"Vrstica {i}: neveljaven ID discipline {did} (mora biti 1-4).")
+                continue
+            disc_ids.append(did)
+        if not disc_ids:
+            errors.append(f"Vrstica {i}: manjka disciplina — vpiši ID-je (1-4), ločene z vejico npr. 1,2,4.")
             continue
-        disc_id = disc.id
-        sl = db.query(StartList).filter(
-            StartList.discipline_id == disc_id,
-            StartList.grade == grade
-        ).order_by(StartList.event_date.desc(), StartList.id.desc()).first()
-        if not sl:
-            sl = StartList(discipline_id=disc_id, grade=grade, event_date=_dt_now.utcnow())
-            db.add(sl)
-            db.flush()
-            start_lists_created += 1
-        if pupil not in sl.pupils:
-            sl.pupils.append(pupil)
-            start_entries += 1
+        for disc_id in disc_ids:
+            disc = _disciplina_po_id(db, disc_id)
+            if disc is None:
+                errors.append(f"Vrstica {i}: neznan ID discipline {disc_id}.")
+                continue
+            sl = db.query(StartList).filter(
+                StartList.discipline_id == disc.id,
+                StartList.grade == grade,
+                StartList.gender == gender,
+            ).order_by(StartList.event_date.desc(), StartList.id.desc()).first()
+            if not sl:
+                sl = StartList(discipline_id=disc.id, grade=grade, gender=gender, event_date=_dt_now.utcnow())
+                db.add(sl)
+                db.flush()
+                start_lists_created += 1
+            if pupil not in sl.pupils:
+                sl.pupils.append(pupil)
+                start_entries += 1
 
     if errors:
         db.rollback()  # sprosti pisalno ključavnico TAKOJ (ne šele po koncu response)
