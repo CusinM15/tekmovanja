@@ -1252,7 +1252,7 @@ function odpriModalSmtp(){
       '<div class="info">Nastavitve za pošiljanje povabil in rezultatov prek Arnes e-pošte. Geslo se shrani samo na tem računalniku.</div>' +
       '<div class="polje"><label>Strežnik (SMTP)</label><input id="f-smtp-host" value="' + esc(s.host || 'smtp.arne.gov.si') + '"></div>' +
       '<div class="polje"><label>Vrata</label><input id="f-smtp-port" type="number" value="' + (s.port || 587) + '"></div>' +
-      '<div class="polje"><label>Uporabniško ime (kratko, brez @domena)</label><input id="f-smtp-user" value="' + esc(s.user || '') + '" placeholder="npr. ime.priimek"></div>' +
+      '<div class="polje"><label>Uporabniško ime (kratko ime)</label><input id="f-smtp-user" value="' + esc(s.user || '') + '" placeholder="npr. ime.priimek"></div>' +
       '<div class="polje"><label>Naslov pošiljatelja (dejanski e-naslov)</label><input id="f-smtp-from" value="' + esc(s.from_addr || '') + '" placeholder="npr. ime.priimek@arnes.si"></div>' +
       '<div class="polje"><label>Geslo' + (s.has_password ? ' (nastavljeno — pusti prazno za nespremenjeno)' : '') + '</label><input id="f-smtp-pass" type="password"></div>' +
       '<div class="modal-gumbi">' +
