@@ -489,3 +489,22 @@ def test_uvoz_novega_formata_sola_zgoraj_in_razred_23(client):
     d = [x for x in ucenci if x["first_name"] == "Nov"]
     assert n and n[0]["grade"] == "2.r" and n[0]["school_name"] == "OŠ Žirovnica", n
     assert d and d[0]["grade"] == "3.r" and d[0]["school_name"] == "OŠ Žirovnica", d
+
+
+def test_results_pdf_uvodna_stran_in_16_skupin(client):
+    """/results-pdf: pravi PDF z uvodno stranjo (naslov STANKOV MEMORIAL,
+    podnaslov, sodelujoče šole) + pregled tekmovalnih skupin (šport×spol×razred)."""
+    r = client.get("/results-pdf")
+    assert r.status_code == 200, r.text
+    assert r.headers["Content-Type"].startswith("application/pdf")
+    assert r.content.startswith(b"%PDF"), "odgovor mora biti pravi PDF"
+    assert len(r.content) > 5000, "PDF mora vsebovati vsebino (ne prazen)"
+
+    src = io.open("/home/matej/forgejo/opensource/tekmovanja/app/utils.py", encoding="utf-8").read()
+    msrc = io.open("/home/matej/forgejo/opensource/tekmovanja/app/main.py", encoding="utf-8").read()
+    # naslov dogodka prihaja iz endpointa (main.py)
+    assert "STANKOV" in msrc, "naslov dogodka v endpointu"
+    # uvodna stran v utils.py
+    assert "Sodelujoče šole" in src
+    assert "Pregled tekmovalnih skupin" in src
+    assert "PageBreak" in src, "uvodna stran mora biti ločena od rezultatov"

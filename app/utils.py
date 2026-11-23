@@ -326,13 +326,17 @@ def _cell_par(text, font, size=10):
     return Paragraph(text if text is not None else "", st)
 
 
-def results_pdf_bytes(events, title="Tekmovanja — rezultati"):
-    """Pravi PDF s seznamom rezultatov. Vrne bajte."""
+def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None):
+    """Pravi PDF z rezultati (reportlab):
+    - uvodna stran: naslov, podnaslov, datum, seznam šol, tabela 16 tekmovalnih skupin
+      (šport × spol × razred) s številom učencev in rezultatov,
+    - nato rezultati po vsaki skupini, razvrščeni po času (najboljši prvi).
+    """
     from io import BytesIO
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from datetime import datetime
 
@@ -344,31 +348,61 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati"):
     styles["Heading2"].fontName = font
     styles["Normal"].fontName = font
 
+    schools = schools or []
+    pupils = pupils or []
+
+    # 16 skupin: vsaka disciplina × razred × spol
+    skupine = []  # (disciplina, razred, spol) — urejeno po disciplini, razredu, spolu
+    disc_ids = sorted({ev.discipline_id for ev in events if ev.discipline_id})
+    for did in disc_ids:
+        for raz in ("2.r", "3.r"):
+            for spol in ("M", "Ž"):
+                skupine.append((did, raz, spol))
+
+    # Poimenovanje spola
+    def spol_ime(s):
+        return "fantje" if s == "M" else "dekleta"
+
+    # ── UVODNA STRAN ──────────────────────────────────────────────
     elems = []
     elems.append(Paragraph(title, styles["Title"]))
-    elems.append(Spacer(1, 0.4 * cm))
-    elems.append(Paragraph(f"Datum izpisa: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles["Normal"]))
+    if subtitle:
+        elems.append(Spacer(1, 0.15 * cm))
+        elems.append(Paragraph(subtitle, styles["Heading2"]))
+    elems.append(Spacer(1, 0.3 * cm))
+    elems.append(Paragraph(f"Datum izpisa: {datetime.now().strftime('%d.%m.%Y')}",
+                           styles["Normal"]))
     elems.append(Spacer(1, 0.5 * cm))
 
-    data = [["Učenec", "Razred", "Disciplina", "Čas / dolžina", "Mesto", "Opombe"]]
-    for ev in events:
-        pupil = ev.pupil
-        disc = ev.discipline
-        data.append([
-            _cell_par(f"{pupil.first_name} {pupil.last_name}" if pupil else "—", font, size=9),
-            _cell_par(pupil.grade if pupil else "", font, size=9),
-            _cell_par(disc.name if disc else "—", font, size=9),
-            _cell_par(f"{ev.time:.2f} {enota_za_disciplino(disc.name if disc else '')}" if ev.time is not None else "", font, size=9),
-            _cell_par(str(ev.position) if ev.position is not None else "", font, size=9),
-            _cell_par((ev.notes or "") or "", font, size=9),
-        ])
-    if len(data) == 1:
-        data.append([_cell_par("Ni še vnesenih rezultatov.", font, size=9)]
-                    + [_cell_par("", font, size=9) for _ in range(5)])
+    # Seznam šol
+    if schools:
+        elems.append(Paragraph("Sodelujoče šole:", styles["Heading2"]))
+        for s in sorted(schools, key=lambda x: x.name):
+            elems.append(Paragraph(f"• {s.name}", styles["Normal"]))
+        elems.append(Spacer(1, 0.5 * cm))
 
-    # Širine seštevek <= ~17 cm (A4 brez robov) — učenci/opombe se zvijejo znotraj celice.
-    t = Table(data, repeatRows=1, colWidths=[3.8 * cm, 1.5 * cm, 4.2 * cm, 2.6 * cm, 1.5 * cm, 2.6 * cm])
-    t.setStyle(TableStyle([
+    # Pregled skupin: št. učencev in št. rezultatov
+    elems.append(Paragraph("Pregled tekmovalnih skupin:", styles["Heading2"]))
+    skup = [[_cell_par("Disciplina", font, size=9),
+             _cell_par("Razred", font, size=9),
+             _cell_par("Spol", font, size=9),
+             _cell_par("Učencev", font, size=9),
+             _cell_par("Rezultatov", font, size=9)]]
+    for did, raz, spol in skupine:
+        disc = next((ev.discipline for ev in events if ev.discipline and ev.discipline_id == did), None)
+        ime = disc.name if disc else f"ID {did}"
+        st_uc = sum(1 for p in pupils if p.grade == raz and p.gender == spol)
+        st_rez = sum(1 for ev in events
+                     if ev.discipline_id == did and ev.pupil
+                     and ev.pupil.grade == raz and ev.pupil.gender == spol)
+        skup.append([_cell_par(ime, font, size=9),
+                     _cell_par(raz, font, size=9),
+                     _cell_par(spol_ime(spol), font, size=9),
+                     _cell_par(str(st_uc), font, size=9),
+                     _cell_par(str(st_rez), font, size=9)])
+    t_sk = Table(skup, repeatRows=1,
+                 colWidths=[5.0 * cm, 2.2 * cm, 2.5 * cm, 2.6 * cm, 3.0 * cm])
+    t_sk.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, 0), font),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -379,7 +413,53 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati"):
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
-    elems.append(t)
+    elems.append(t_sk)
+    elems.append(PageBreak())
+
+    # ── REZULTATI PO SKUPINAH ─────────────────────────────────────
+    for did, raz, spol in skupine:
+        disc = next((ev.discipline for ev in events if ev.discipline and ev.discipline_id == did), None)
+        ime = disc.name if disc else f"Disciplina ID {did}"
+        # rezultati te skupine, razvrščeni po času (najboljši prvi)
+        rez = [ev for ev in events
+               if ev.discipline_id == did and ev.pupil
+               and ev.pupil.grade == raz and ev.pupil.gender == spol]
+        rez.sort(key=lambda ev: (ev.time if ev.time is not None else float("inf")))
+        if not rez:
+            continue  # skupina brez rezultatov se ne izpiše posebej
+        naslov = f"{ime} — {spol_ime(spol)}, {raz}"
+        elems.append(Paragraph(naslov, styles["Heading2"]))
+        elems.append(Spacer(1, 0.2 * cm))
+        data = [[_cell_par("Mesto", font, size=9),
+                 _cell_par("Učenec", font, size=9),
+                 _cell_par("Šola", font, size=9),
+                 _cell_par("Čas / dolžina", font, size=9),
+                 _cell_par("Opombe", font, size=9)]]
+        for i, ev in enumerate(rez, 1):
+            p = ev.pupil
+            data.append([
+                _cell_par(str(i) + ".", font, size=9),
+                _cell_par(f"{p.first_name} {p.last_name}" if p else "—", font, size=9),
+                _cell_par((p.school.name if p and p.school else "") or "—", font, size=9),
+                _cell_par(f"{ev.time:.2f} {enota_za_disciplino(ime)}" if ev.time is not None else "—", font, size=9),
+                _cell_par((ev.notes or "") or "", font, size=9),
+            ])
+        t = Table(data, repeatRows=1,
+                  colWidths=[1.6 * cm, 4.6 * cm, 4.6 * cm, 2.8 * cm, 2.4 * cm])
+        t.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), font),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f2f2f2")]),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elems.append(t)
+        elems.append(Spacer(1, 0.5 * cm))
+
     elems.append(Spacer(1, 0.6 * cm))
     elems.append(Paragraph("Generated by Tekmovanja — Primary School Athletics Manager", styles["Normal"]))
     doc.build(elems)

@@ -1072,7 +1072,11 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
     else:
         events = db.query(CompetitionEvent).all()
 
-    pdf = results_pdf_bytes(events, title="Tekmovanja — rezultati")
+    schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
+    pupils = db.query(Pupil).all()
+
+    pdf = results_pdf_bytes(events, title="STANKOV MEMORIAL — rezultati",
+                            schools=schools, pupils=pupils)
     from datetime import datetime as _dt
     filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     return Response(
@@ -1095,13 +1099,21 @@ def email_results(
     if not events:
         return {"message": "Ni rezultatov za pošiljanje.", "ok": False}
     
-    # Pravi PDF (reportlab) — pravilen encoding + pošlje dejanske bajte PDF
-    pdf = results_pdf_bytes(events, title="Tekmovanja — rezultati")
-    
+    # Pravi PDF (reportlab) — uvodna stran + rezultati po vseh 16 skupinah
+    schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
+    pupils = db_session.query(Pupil).all()
+    pdf = results_pdf_bytes(
+        events,
+        title="STANKOV MEMORIAL — rezultati",
+        subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
+        schools=schools,
+        pupils=pupils,
+    )
+
     # Get active schools
     active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     
-    subject = "Rezultati tekmovanja"
+    subject = "STANKOV MEMORIAL — rezultati"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
     
     body = "Prišli so rezultati tekmovanja.\n\n" \
