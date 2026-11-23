@@ -1244,19 +1244,25 @@ function posljiRezultate(){
 }
 
 function odpriModalSmtp(){
-  $('modal-vsebina').innerHTML =
-    '<h3>⚙️ Nastavitve e-pošte (SMTP)</h3>' +
-    '<div class="info">Nastavitve za pošiljanje povabil in rezultatov prek Arnes e-pošte. Geslo se shrani samo na tem računalniku.</div>' +
-    '<div class="polje"><label>Strežnik (SMTP)</label><input id="f-smtp-host" value="smtp.arne.gov.si"></div>' +
-    '<div class="polje"><label>Vrata</label><input id="f-smtp-port" type="number" value="587"></div>' +
-    '<div class="polje"><label>Uporabniško ime (e-pošta)</label><input id="f-smtp-user"></div>' +
-    '<div class="polje"><label>Naslov pošiljatelja (From)</label><input id="f-smtp-from" placeholder="npr. admin@sole.si"></div>' +
-    '<div class="polje"><label>Geslo</label><input id="f-smtp-pass" type="password"></div>' +
-    '<div class="modal-gumbi">' +
-      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-      '<button class="gumb gumb-zelen" onclick="shraniSmtp()">Shrani nastavitve</button>' +
-    '</div>';
-  odpriModal();
+  // Preberi shranjene nastavitve, da se ob ponovnem odpiranju pokažejo
+  // (prej so bila polja vedno prazna — izgledalo je, kot da se nič ne shrani).
+  api('/api/smtp').then(function(s){
+    $('modal-vsebina').innerHTML =
+      '<h3>⚙️ Nastavitve e-pošte (SMTP)</h3>' +
+      '<div class="info">Nastavitve za pošiljanje povabil in rezultatov prek Arnes e-pošte. Geslo se shrani samo na tem računalniku.</div>' +
+      '<div class="polje"><label>Strežnik (SMTP)</label><input id="f-smtp-host" value="' + esc(s.host || 'smtp.arne.gov.si') + '"></div>' +
+      '<div class="polje"><label>Vrata</label><input id="f-smtp-port" type="number" value="' + (s.port || 587) + '"></div>' +
+      '<div class="polje"><label>Uporabniško ime (kratko, brez @domena)</label><input id="f-smtp-user" value="' + esc(s.user || '') + '" placeholder="npr. ime.priimek"></div>' +
+      '<div class="polje"><label>Naslov pošiljatelja (dejanski e-naslov)</label><input id="f-smtp-from" value="' + esc(s.from_addr || '') + '" placeholder="npr. ime.priimek@arnes.si"></div>' +
+      '<div class="polje"><label>Geslo' + (s.has_password ? ' (nastavljeno — pusti prazno za nespremenjeno)' : '') + '</label><input id="f-smtp-pass" type="password"></div>' +
+      '<div class="modal-gumbi">' +
+        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+        '<button class="gumb gumb-zelen" onclick="shraniSmtp()">Shrani nastavitve</button>' +
+      '</div>';
+    odpriModal();
+  }).catch(function(e){
+    toast('Napaka pri branju nastavitev: ' + e.message, 'napaka');
+  });
 }
 
 function shraniSmtp(){
@@ -1267,7 +1273,8 @@ function shraniSmtp(){
     password: $('f-smtp-pass').value,
     from_addr: $('f-smtp-from').value.trim()
   };
-  if (!pod.user || !pod.password){ toast('Vnesite uporabniško ime in geslo.', 'napaka'); return; }
+  if (!pod.user){ toast('Vnesite uporabniško ime.', 'napaka'); return; }
+  // Geslo: če je prazno, backend ohrani obstoječe (če obstaja) — drugače napaka.
   api('/api/smtp', 'POST', pod).then(function(r){
     toast(r.message || 'Nastavitve shranjene.', 'ok');
     zapriModal();

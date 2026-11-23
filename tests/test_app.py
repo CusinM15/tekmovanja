@@ -318,3 +318,60 @@ def test_enota_za_disciplino():
     assert enota_za_disciplino("") == "s"
     assert enota_za_disciplino(None) == "s"
 
+
+def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
+    """GET/POST /api/smtp: shrani vrednosti, gesla NE vrača; prazno geslo
+    ohrani obstoječe; brez shranjenega gesla + prazno → 400."""
+    from app.settings import AppConfig
+    from app.main import app_config
+
+    # Izoliramo config v tmp (ne kvarimo /tmp/tekmovanja/config.json)
+    import json as _json
+    orig = app_config.config_file
+    app_config.config_file = tmp_path / "config.json"
+    app_config.smtp_host = "smtp.arne.gov.si"
+    app_config.smtp_port = 587
+    app_config.smtp_user = None
+    app_config.smtp_password = None
+    app_config.smtp_from = None
+    try:
+        # GET na čistem → prazna polja
+        g = client.get("/api/smtp").json()
+        assert g["user"] == "" and g["from_addr"] == "" and g["has_password"] is False
+
+        # POST z geslom → shrani
+        r = client.post("/api/smtp", data={
+            "host": "smtp.arnes.si", "port": "587",
+            "user": "ime.priimek", "password": "sifra123",
+            "from_addr": "ime.priimek@arnes.si",
+        })
+        assert r.status_code == 200, r.text
+        assert app_config.smtp_user == "ime.priimek"
+        assert app_config.smtp_password == "sifra123"
+        assert app_config.smtp_from == "ime.priimek@arnes.si"
+
+        # GET → vrne vse RAZEN gesla
+        g2 = client.get("/api/smtp").json()
+        assert g2["user"] == "ime.priimek"
+        assert g2["from_addr"] == "ime.priimek@arnes.si"
+        assert g2["has_password"] is True
+        assert "password" not in g2, "geslo se ne sme vračati"
+
+        # POST s PRAZNIM geslom → ohrani obstoječe (200)
+        r2 = client.post("/api/smtp", data={
+            "host": "smtp.arnes.si", "port": "587",
+            "user": "ime.priimek", "password": "", "from_addr": "ime.priimek@arnes.si",
+        })
+        assert r2.status_code == 200, r2.text
+        assert app_config.smtp_password == "sifra123", "geslo se mora ohraniti"
+
+        # POST prazno geslo + NI shranjenega → 400
+        app_config.smtp_password = None
+        r3 = client.post("/api/smtp", data={
+            "host": "smtp.arnes.si", "port": "587",
+            "user": "neki", "password": "", "from_addr": "",
+        })
+        assert r3.status_code == 400, r3.text
+    finally:
+        app_config.config_file = orig
+

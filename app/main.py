@@ -1277,20 +1277,44 @@ def delete_record(record_id: int, db=Depends(get_db)):
     return RecordService.delete(db, record_id)
 
 
+@app.get("/api/smtp", response_model=dict, summary="Get SMTP settings")
+def get_smtp_settings_api(db=Depends(get_db)):
+    """Vrni shranjene SMTP nastavitve (gesla NE vračamo — samo flag, ali je nastavljeno)."""
+    return {
+        "host": app_config.smtp_host,
+        "port": app_config.smtp_port,
+        "user": app_config.smtp_user or "",
+        "from_addr": app_config.smtp_from or "",
+        "has_password": bool(app_config.smtp_password),
+    }
+
+
 @app.post("/api/smtp", response_model=dict, summary="Save SMTP settings")
 def save_smtp_settings(
     host: str = Form("smtp.arne.gov.si"),
     port: int = Form(587),
     user: str = Form(...),
-    password: str = Form(...),
+    password: str = Form(""),
     from_addr: str = Form(None),
     db=Depends(get_db)
 ):
-    """Save SMTP credentials (stored locally, never in git)."""
+    """Save SMTP credentials (stored locally, never in git).
+
+    Če je password prazen, se ohrani obstoječi (label: "pusti prazno za
+    nespremenjeno"); če ni shranjenega gesla, pa vrnemo napako."""
     app_config.smtp_host = host.strip()
     app_config.smtp_port = port
     app_config.smtp_from = (from_addr or "").strip() or None
-    app_config.set_smtp_credentials(user.strip(), password)
+    if password:
+        app_config.set_smtp_credentials(user.strip(), password)
+    else:
+        app_config.smtp_user = user.strip()
+        if not app_config.smtp_password:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Vnesite geslo (ali shranite že nastavljeno geslo z vnosom novega)."},
+            )
+        app_config._save_config(app_config._full_config())
     return {"message": "Nastavitve e-pošte so shranjene."}
 
 
