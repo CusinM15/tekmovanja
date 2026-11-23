@@ -284,6 +284,7 @@ class StartList(Base):
             "discipline_id": self.discipline_id,
             "discipline_name": self.discipline.name if self.discipline else None,
             "grade": self.grade,
+            "gender": self.gender,
             "event_date": self.event_date.isoformat() if self.event_date else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "pupil_count": len(self.pupils),
