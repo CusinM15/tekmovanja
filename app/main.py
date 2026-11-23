@@ -822,7 +822,12 @@ def _posiljatelj_ime():
     vir = (app_config.smtp_user or "").strip()
     if not vir:
         return "Organizator tekmovanja"
-    return " ".join(w.capitalize() for w in vir.replace(".", " ").replace("_", " ").replace("-", " ").split() if w)
+    ime = " ".join(w.capitalize() for w in vir.replace(".", " ").replace("_", " ").replace("-", " ").split() if w)
+    # Fallback naj pokaže le nekaj, kar zgleda kot ime+priimek (vsaj 2 besedi);
+    # sicer raje generičen podpis kot grd shortname (npr. "Matcus1").
+    if " " not in ime:
+        return "Organizator tekmovanja"
+    return ime
 
 
 # === CSV IMPORT ===
