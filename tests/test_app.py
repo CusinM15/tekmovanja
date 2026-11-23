@@ -183,10 +183,10 @@ def test_predloga_vsebuje_glavo_in_sola(client):
     (Razred 2/3, brez stolpca Discipline)."""
     j = client.get("/send-invitations").json()
     gl = j["csv_template"]
-    assert "First Name, Last Name, Grade, Gender" in gl
+    assert "Ime, Priimek, Razred, Spol, Discipline (ID)" in gl
     assert "ŠOLA:" in gl
     assert "*** NAVODILA" in gl
-    assert "Discipline (ID)" not in gl
+    assert "First Name" not in gl
 
 
 def test_startna_lista_pdf_s_stolpcem_rezultat(client):
@@ -281,6 +281,17 @@ def test_avtomatsko_mesto_in_tocke_po_solah(client):
     n = lambda nm: after.get(nm, 0) - before.get(nm, 0)
     assert n(u0["school_name"]) == 12, f"šola 2. mesta mora dobiti 12 točk (dobil {n(u0['school_name'])})"
     assert n(u1["school_name"]) == 15, f"šola 1. mesta mora dobiti 15 točk (dobil {n(u1['school_name'])})"
+
+
+
+def test_uvoz_slovenska_glava(client):
+    """UVOZ: sprejme tudi SLOVENSKO glavo (Ime, Priimek, Razred, Spol, Discipline (ID))."""
+    csv = ("\ufeffŠOLA:\nOŠ Žirovnica\n\n"
+           "Ime, Priimek, Razred, Spol, Discipline (ID)\n"
+           "Slovenska,Glava,3,Ž,1 2 4\n")
+    j = client.post("/import-csv", files={"file": ("s.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert j["status"] == "success", j
+    assert j["records_created"] == 1 and j["start_entries"] == 3, j
 
 
 def test_uvoz_vecih_disciplin_brez_narekovajev(client):

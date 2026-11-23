@@ -679,7 +679,7 @@ def _csv_template():
             "ŠOLA:\n<ime svoje šole>\n\n" +
             "ID,Disciplina (šport)\n"
             "1,tek 60m\n2,tek 400m\n3,skok v daljino\n4,met vorteksa\n\n" +
-            "First Name, Last Name, Grade, Gender, Discipline (IDs)\n")
+            "Ime, Priimek, Razred, Spol, Discipline (ID)\n")
 
 
 # 4 discipline = 4 športi (ID 1-4); spol+razred iz vrstice določita tekmovalno
@@ -765,7 +765,7 @@ def send_invitations_emails(db=Depends(get_db)):
     if not active_schools:
         return {"message": "Ni aktivnih šol za pošiljanje.", "ok": False}
 
-    subject = "Uporaba tekmovanja - sh registers"
+    subject = "Stankov memorial — prijava učencev"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
     recipients = [s.email for s in active_schools]
 
@@ -779,12 +779,12 @@ def send_invitations_emails(db=Depends(get_db)):
     csv_content = _csv_template()
 
     # Build message
-    body = f"Cerkev tekmovanja o športni tekmovanju.\n\n" \
-           "Prosimo, da vnašte spletno razmisljo o namenu tekmovanja v vaši šoli.\n\n" \
-           "Vpletaš: https://localhost:8000\n" \
-           "Vrziš: Tekmovanja v Primarni šoli\n\n" \
-           "Ko vpisali štroke v CSV, vrziši jih nazpored.\n\n" \
-           "Zahvalimo!"
+    body = ("Pozdravljeni,\n\n"
+            "vabimo vas k prijavi učencev na Stankov memorial.\n\n"
+            "Izpolnite priloženo CSV datoteko (prenesite jo in odprite v Excelu) in nam "
+            "vrnite izpolnjen CSV s podatki vseh učencev vaše šole. "
+            "Na vrhu datoteke so navodila za izpolnjevanje.\n\n"
+            "Hvala in lep pozdrav,\nOrganizator tekmovanja")
 
     try:
         send_email(
@@ -792,7 +792,7 @@ def send_invitations_emails(db=Depends(get_db)):
             sender=sender,
             recipients=recipients,
             body=body,
-            attachments=[("attendance_template.csv", csv_content, "text/csv")],
+            attachments=[("prijava_ucencev.csv", csv_content, "text/csv")],
         )
     except Exception as e:
         print(f"send-emails napaka: {e}")
@@ -846,11 +846,15 @@ async def import_csv(
     header_idx = None
     for idx, r in enumerate(rows):
         nizki = {c.strip().lower() for c in r if c.strip()}
-        if "first name" in nizki and "last name" in nizki and ("grade" in nizki or "gender" in nizki):
+        ima_ime = ("first name" in nizki or "ime" in nizki)
+        ima_priimek = ("last name" in nizki or "priimek" in nizki)
+        ima_razred = ("grade" in nizki or "razred" in nizki)
+        ima_spol = ("gender" in nizki or "spol" in nizki)
+        if ima_ime and ima_priimek and (ima_razred or ima_spol):
             header_idx = idx
             break
     if header_idx is None:
-        raise HTTPException(status_code=400, detail="CSV manjka glava: First Name, Last Name, Grade, Gender, Discipline (ID)")
+        raise HTTPException(status_code=400, detail="CSV manjka glava: Ime, Priimek, Razred, Spol, Discipline (ID)")
 
     # Šola iz polja zgoraj »ŠOLA:« — šolo šole vpišejo SAMO ENKRAT za celo datoteko
     def _norm_grade(g):
@@ -882,15 +886,17 @@ async def import_csv(
 
     headers = [_norm(h) for h in rows[header_idx]]
 
-    def col(key):
-        try:
-            return headers.index(key)
-        except ValueError:
-            return -1
+    def col(*keys):
+        for k in keys:
+            try:
+                return headers.index(k)
+            except ValueError:
+                pass
+        return -1
 
-    idx_first = col("first name"); idx_last = col("last name")
-    idx_school = col("school"); idx_grade = col("grade"); idx_gender = col("gender")
-    idx_disc = col("discipline")
+    idx_first = col("first name", "ime"); idx_last = col("last name", "priimek")
+    idx_school = col("school", "šola"); idx_grade = col("grade", "razred")
+    idx_gender = col("gender", "spol"); idx_disc = col("discipline")
     if -1 in (idx_first, idx_last):
         raise HTTPException(status_code=400, detail="CSV manjka stolpca 'First Name' ali 'Last Name'")
     if idx_school < 0 and not sola:
@@ -1074,9 +1080,11 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
 
     schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     pupils = db.query(Pupil).all()
+    records = db.query(Record).all()
 
     pdf = results_pdf_bytes(events, title="STANKOV MEMORIAL — rezultati",
-                            schools=schools, pupils=pupils)
+                            subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
+                            schools=schools, pupils=pupils, records=records)
     from datetime import datetime as _dt
     filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     return Response(
@@ -1102,12 +1110,14 @@ def email_results(
     # Pravi PDF (reportlab) — uvodna stran + rezultati po vseh 16 skupinah
     schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     pupils = db_session.query(Pupil).all()
+    records = db_session.query(Record).all()
     pdf = results_pdf_bytes(
         events,
         title="STANKOV MEMORIAL — rezultati",
         subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
         schools=schools,
         pupils=pupils,
+        records=records,
     )
 
     # Get active schools
@@ -1116,9 +1126,9 @@ def email_results(
     subject = "STANKOV MEMORIAL — rezultati"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
     
-    body = "Prišli so rezultati tekmovanja.\n\n" \
-           "Sodobna tekmovanja se izvedejo. Prosimo, prebrati rezultate in vprašati v primeru napake.\n\n" \
-           "Zahvalimo za sodelovanje!"
+    body = ("Pozdravljeni,\n\n"
+            "prilagamo rezultate tekmovanja Stankov memorial za vašo šolo.\n\n"
+            "Lep pozdrav,\nOrganizator tekmovanja")
     
     try:
         send_email(
