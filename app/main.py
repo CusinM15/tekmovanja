@@ -784,7 +784,7 @@ def send_invitations_emails(db=Depends(get_db)):
             "Izpolnite priloženo CSV datoteko (prenesite jo in odprite v Excelu) in nam "
             "vrnite izpolnjen CSV s podatki vseh učencev vaše šole. "
             "Na vrhu datoteke so navodila za izpolnjevanje.\n\n"
-            "Hvala in lep pozdrav,\nOrganizator tekmovanja")
+            "Hvala in lep pozdrav,\n" + _posiljatelj_ime())
 
     try:
         send_email(
@@ -809,6 +809,17 @@ def _napaka_posiljanja(e):
                 f"v Nastavitvah e-pošte ({app_config.smtp_host}:{app_config.smtp_port}) in internetno povezavo.")
     msg = str(e) or type(e).__name__
     return f"Pošiljanje ni uspelo: {msg}"
+
+
+
+def _posiljatelj_ime():
+    """Ime in priimek pošiljatelja iz SMTP uporabniškega imena
+    (npr. 'ime.priimek' ali 'ime_priimek' -> 'Ime Priimek')."""
+    vir = (app_config.smtp_user or "").strip()
+    if not vir:
+        return "Organizator tekmovanja"
+    ime = vir.replace(".", " ").replace("_", " ").replace("-", " ").strip()
+    return " ".join(w.capitalize() for w in ime.split() if w)
 
 
 # === CSV IMPORT ===
@@ -1128,7 +1139,7 @@ def email_results(
     
     body = ("Pozdravljeni,\n\n"
             "prilagamo rezultate tekmovanja Stankov memorial za vašo šolo.\n\n"
-            "Lep pozdrav,\nOrganizator tekmovanja")
+            "Lep pozdrav,\n" + _posiljatelj_ime())
     
     try:
         send_email(

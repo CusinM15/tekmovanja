@@ -514,28 +514,33 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
             if not rek_raz:
                 elems.append(Paragraph("Ni še zabeleženih rekordov.", styles["Normal"]))
                 continue
-            ime_discipline = {}
-            for ev in events:
-                if ev.discipline and ev.discipline_id not in ime_discipline:
-                    ime_discipline[ev.discipline_id] = ev.discipline.name
+            def _disc_ime(r):
+                # Ime discipline vzamemo iz REKORDA samega (če disciplina še obstaja v bazi);
+                # pri neveljavnem ID-ju (npr. stari rekordi) se izpiše "ID n".
+                return (r.discipline.name if r.discipline else f"ID {r.discipline_id}")
             razvr = sorted(rek_raz, key=lambda r: (
-                str(ime_discipline.get(r.discipline_id, r.discipline_id)),
+                str(_disc_ime(r)),
                 r.time if r.time is not None else float("inf"),
             ))
             data = [[_cell_par("Disciplina", font, size=9),
+                     _cell_par("Spol", font, size=9),
+                     _cell_par("Razred", font, size=9),
                      _cell_par("Učenec", font, size=9),
                      _cell_par("Šola", font, size=9),
                      _cell_par("Rezultat", font, size=9)]]
             for r in razvr:
-                disc_ime = ime_discipline.get(r.discipline_id, f"ID {r.discipline_id}")
+                spol = getattr(r, "pupil_gender", None) or (r.pupil.gender if r.pupil else None)
+                razred = getattr(r, "pupil_grade", None) or (r.pupil.grade if r.pupil else None)
                 data.append([
-                    _cell_par(disc_ime, font, size=9),
+                    _cell_par(_disc_ime(r), font, size=9),
+                    _cell_par((spol_ime(spol) if spol in ("M", "Ž") else (spol or "—")), font, size=9),
+                    _cell_par((razred or "—"), font, size=9),
                     _cell_par((r.pupil_name or "—"), font, size=9),
                     _cell_par((r.school_name or "—"), font, size=9),
-                    _cell_par(f"{r.time:.2f} {enota_za_disciplino(disc_ime)}" if r.time is not None else "—", font, size=9),
+                    _cell_par(f"{r.time:.2f} {enota_za_disciplino(_disc_ime(r))}" if r.time is not None else "—", font, size=9),
                 ])
             t_stanko = Table(data, repeatRows=1,
-                             colWidths=[4.6 * cm, 5.2 * cm, 5.2 * cm, 2.8 * cm])
+                             colWidths=[3.6 * cm, 1.9 * cm, 1.6 * cm, 4.0 * cm, 4.0 * cm, 2.4 * cm])
             t_stanko.setStyle(TableStyle([
                 ("FONTNAME", (0, 0), (-1, 0), font),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
