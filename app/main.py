@@ -796,9 +796,20 @@ def send_invitations_emails(db=Depends(get_db)):
         )
     except Exception as e:
         print(f"send-emails napaka: {e}")
-        return {"message": f"Pošiljanje ni uspelo: {e}"}
+        return {"message": _napaka_posiljanja(e)}
 
     return {"message": f"Invitations sent to {len(recipients)} school(s)."}
+
+
+def _napaka_posiljanja(e):
+    """Človeku prijazno sporočilo ob napaki pošiljanja e-pošte."""
+    import socket
+    if isinstance(e, socket.gaierror):
+        return ("SMTP strežnik ni dosegljiv (DNS napaka). Preveri naslov strežnika "
+                f"v Nastavitvah e-pošte ({app_config.smtp_host}:{app_config.smtp_port}) in internetno povezavo.")
+    msg = str(e) or type(e).__name__
+    return f"Pošiljanje ni uspelo: {msg}"
+
 
 # === CSV IMPORT ===
 
@@ -1378,12 +1389,14 @@ def delete_record(record_id: int, db=Depends(get_db)):
 
 @app.get("/api/smtp", response_model=dict, summary="Get SMTP settings")
 def get_smtp_settings_api(db=Depends(get_db)):
-    """Vrni shranjene SMTP nastavitve (gesla NE vračamo — samo flag, ali je nastavljeno)."""
+    """Vrni shranjene SMTP nastavitve. Geslo vrnemo (lokalna app), da ga obrazec
+    prikaže maskirano (******) in ga uporabnik lahko pokaže s klikom na 👁."""
     return {
         "host": app_config.smtp_host,
         "port": app_config.smtp_port,
         "user": app_config.smtp_user or "",
         "from_addr": app_config.smtp_from or "",
+        "password": app_config.smtp_password or "",
         "has_password": bool(app_config.smtp_password),
     }
 

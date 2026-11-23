@@ -326,8 +326,9 @@ def test_enota_za_disciplino():
 
 
 def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
-    """GET/POST /api/smtp: shrani vrednosti, gesla NE vrača; prazno geslo
-    ohrani obstoječe; brez shranjenega gesla + prazno → 400."""
+    """GET/POST /api/smtp: shrani vrednosti; geslo se VRNE (obrazec ga prikaže
+    maskirano ****** + 👁 prikaz); prazno geslo ohrani obstoječe; brez shranjenega
+    gesla + prazno → 400."""
     from app.settings import AppConfig
     from app.main import app_config
 
@@ -356,12 +357,12 @@ def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
         assert app_config.smtp_password == "sifra123"
         assert app_config.smtp_from == "ime.priimek@arnes.si"
 
-        # GET → vrne vse RAZEN gesla
+        # GET → vrne vse, TUDI geslo (za maskiran prikaz in 👁 razkritje)
         g2 = client.get("/api/smtp").json()
         assert g2["user"] == "ime.priimek"
         assert g2["from_addr"] == "ime.priimek@arnes.si"
         assert g2["has_password"] is True
-        assert "password" not in g2, "geslo se ne sme vračati"
+        assert g2["password"] == "sifra123", "geslo se vrne za prikaz (maskirano) v obrazcu"
 
         # POST s PRAZNIM geslom → ohrani obstoječe (200)
         r2 = client.post("/api/smtp", data={
