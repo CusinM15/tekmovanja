@@ -730,6 +730,20 @@ def generate_csv_template():
         "instructions": csv_info["instructions"]
     }
 
+
+@app.get("/csv-template", summary="Prenesi CSV predlogo (attachment)")
+def csv_template_download():
+    """Vrne prazno CSV predlogo za šole kot prenos datoteke (attachment) —
+    zanesljivo deluje tudi v Firefoxu/LibreWolfu (za razliko od Blob + a.click())."""
+    from fastapi.responses import Response
+    content = _csv_template()
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="predloga_ucenci.csv"'},
+    )
+
+
 @app.post("/send-emails", response_model=dict, summary="Send invitations to active schools")
 def send_invitations_emails(db=Depends(get_db)):
     """Send email invitations to all active schools with CSV template."""

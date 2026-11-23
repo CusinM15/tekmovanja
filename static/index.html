@@ -265,7 +265,7 @@
 
     <div class="info">💡 <strong>Uvoz CSV:</strong> šolam pošljete predlogo, one jo izpolnijo in vrnejo, vi pa datoteko uvozite tukaj.</div>
     <div class="vrstica-gumbov">
-      <button class="gumb gumb-moder" onclick="prenesiPredlogoCsv()">📥 Prenesi prazno predlogo (CSV)</button>
+      <button class="gumb gumb-moder" onclick="prenesiPredlogaCsv()">📥 Prenesi prazno predlogo (CSV)</button>
       <button class="gumb gumb-zelen" onclick="odpriModalUvozCsv()">📄 Uvozi izpolnjeno CSV</button>
       <button class="gumb gumb-orange" onclick="posljiVabila()">✉️ Pošlji povabila šolam</button>
       <button class="gumb gumb-orange" onclick="posljiRezultate()">✉️ Pošlji rezultate šolam</button>
@@ -1175,32 +1175,10 @@ function izbrisiStartno(id){
 
 /* ================= CSV / POŠTA / SMTP ================= */
 function prenesiPredlogaCsv(){
-  // BOM (\ufeff) na začetku: Excel potem pravilno odpre UTF-8 in Š/Ž/Č niso pokvarjeni.
-  var navodila =
-    '*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n' +
-    '1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n' +
-    '2. Vsako vrstico spodaj izpolni za ENEGA učenca:\n' +
-    '   - Ime in priimek (npr. Ana Novak)\n' +
-    '   - Razred: samo 2 ali 3 (brez .r)\n' +
-    '   - Spol: M (fant) ali Ž (punca)\n' +
-    '3. Disciplina se določi samodejno glede na spol in razred — ničesar ni treba vpisovati.\n' +
-    '4. Datoteko shrani in vrni organizatorju.\n\n' +
-    'ŠOLA:\n<ime svoje šole>\n\n' +
-    'First Name, Last Name, Grade, Gender\n';
-  var blob = new Blob([navodila], {type: 'text/csv;charset=utf-8'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'predloga_ucenci.csv';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function(){
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-  }, 1000);
-  toast('Predloga pripravljena za prenos.', 'ok');
+  // Download prek server endpointa — v LibreWolfu/Firefoxu je to zanesljivejše
+  // kot Blob + a.click(), ki ga Firefox tiho ignorira.
+  window.location.href = '/csv-template';
 }
-
 
 function odpriModalUvozCsv(){
   $('modal-vsebina').innerHTML =
