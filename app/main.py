@@ -763,7 +763,7 @@ def send_invitations_emails(db=Depends(get_db)):
     active_schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
 
     if not active_schools:
-        return {"message": "No active schools found"}
+        return {"message": "Ni aktivnih šol za pošiljanje.", "ok": False}
 
     subject = "Uporaba tekmovanja - sh registers"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
@@ -796,9 +796,9 @@ def send_invitations_emails(db=Depends(get_db)):
         )
     except Exception as e:
         print(f"send-emails napaka: {e}")
-        return {"message": _napaka_posiljanja(e)}
+        return {"message": _napaka_posiljanja(e), "ok": False}
 
-    return {"message": f"Invitations sent to {len(recipients)} school(s)."}
+    return {"message": f"Povabila poslana na {len(recipients)} šol.", "ok": True}
 
 
 def _napaka_posiljanja(e):
@@ -1090,7 +1090,7 @@ def email_results(
     events = db_session.query(CompetitionEvent).all()
     
     if not events:
-        return {"message": "No events to include in results"}
+        return {"message": "Ni rezultatov za pošiljanje.", "ok": False}
     
     # Pravi PDF (reportlab) — pravilen encoding + pošlje dejanske bajte PDF
     pdf = results_pdf_bytes(events, title="Tekmovanja — rezultati")
@@ -1115,10 +1115,11 @@ def email_results(
         )
     except Exception as e:
         print(f"Email error: {e}")
-        return {"message": f"Pošiljanje ni uspelo: {e}"}
-    
+        return {"message": _napaka_posiljanja(e), "ok": False}
+
     return {
-        "message": f"Results emailed to {len(active_schools)} school(s)."
+        "message": f"Rezultati poslani na {len(active_schools)} šol.",
+        "ok": True
     }
 
 # === DATA DELETION ===

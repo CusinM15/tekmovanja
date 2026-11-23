@@ -1216,7 +1216,8 @@ function uvoziCsv(){
 function posljiVabila(){
   if (!confirm('Ali želite poslati povabila s CSV predlogo vsem aktivnim šolam?')) return;
   api('/send-emails', 'POST').then(function(r){
-    var napaka = (r.message || '').indexOf('ni uspelo') !== -1;
+    // Napaka = r.ok===false (rdeče obvestilo, 12 s); uspeh = zeleno, kratko.
+    var napaka = r.ok === false;
     toast(r.message || 'Povabila poslana.', napaka ? 'napaka' : 'ok');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
@@ -1224,7 +1225,7 @@ function posljiVabila(){
 function posljiRezultate(){
   if (!confirm('Ali želite poslati rezultate vsem aktivnim šolam?')) return;
   api('/send-results', 'POST').then(function(r){
-    var napaka = (r.message || '').indexOf('ni uspelo') !== -1;
+    var napaka = r.ok === false;
     toast(r.message || 'Rezultati poslani.', napaka ? 'napaka' : 'ok');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
