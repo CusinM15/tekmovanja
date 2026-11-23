@@ -297,7 +297,10 @@ function toast(besedilo, tip){
   t.className = 'toast' + (tip === 'napaka' ? ' rdeca' : tip === 'ok' ? ' zelena' : '');
   t.style.display = 'block';
   clearTimeout(toast._t);
-  toast._t = setTimeout(function(){ t.style.display = 'none'; }, 4000);
+  // Napake ostanejo vidne 12 s (in se zaprejo s klikom), uspehi 4 s.
+  var cas = (tip === 'napaka') ? 12000 : 4000;
+  toast._t = setTimeout(function(){ t.style.display = 'none'; }, cas);
+  t.onclick = function(){ t.style.display = 'none'; };
 }
 
 function esc(s){
@@ -1213,14 +1216,16 @@ function uvoziCsv(){
 function posljiVabila(){
   if (!confirm('Ali želite poslati povabila s CSV predlogo vsem aktivnim šolam?')) return;
   api('/send-emails', 'POST').then(function(r){
-    toast(r.message || 'Povabila poslana.', 'ok');
+    var napaka = (r.message || '').indexOf('ni uspelo') !== -1;
+    toast(r.message || 'Povabila poslana.', napaka ? 'napaka' : 'ok');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
 function posljiRezultate(){
   if (!confirm('Ali želite poslati rezultate vsem aktivnim šolam?')) return;
   api('/send-results', 'POST').then(function(r){
-    toast(r.message || 'Rezultati poslani.', 'ok');
+    var napaka = (r.message || '').indexOf('ni uspelo') !== -1;
+    toast(r.message || 'Rezultati poslani.', napaka ? 'napaka' : 'ok');
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
