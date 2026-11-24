@@ -1104,10 +1104,11 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
     _logo = str(_nast.abs_path(_s["logo"])) if _nast.abs_path(_s["logo"]).exists() else None
     _slika = str(_nast.abs_path(_s["slika"])) if _nast.abs_path(_s["slika"]).exists() else None
 
-    pdf = results_pdf_bytes(events, title=f"{_s['tekmovanje_title']} — rezultati",
+    pdf = results_pdf_bytes(events, title=_s["tekmovanje_title"],
                             subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
                             schools=schools, pupils=pupils, records=records,
-                            logo_path=_logo, slika_path=_slika, rekordi_title=_s["rekordi_title"])
+                            logo_path=_logo, slika_path=_slika,
+                            rekordi_title=_s["rekordi_title"], kraj_datum=_s.get("kraj_datum", ""))
     from datetime import datetime as _dt
     filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     return Response(
@@ -1140,7 +1141,7 @@ def email_results(
     _slika = str(_nast.abs_path(_s["slika"])) if _nast.abs_path(_s["slika"]).exists() else None
     pdf = results_pdf_bytes(
         events,
-        title=f"{_s['tekmovanje_title']} — rezultati",
+        title=_s["tekmovanje_title"],
         subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
         schools=schools,
         pupils=pupils,
@@ -1148,6 +1149,7 @@ def email_results(
         logo_path=_logo,
         slika_path=_slika,
         rekordi_title=_s["rekordi_title"],
+        kraj_datum=_s.get("kraj_datum", ""),
     )
 
     # Get active schools
@@ -1455,6 +1457,7 @@ def get_nastavitve():
     return {
         "tekmovanje_title": d["tekmovanje_title"],
         "rekordi_title": d["rekordi_title"],
+        "kraj_datum": d.get("kraj_datum", ""),
         "logo": n_l,
         "slika": n_s,
         "logo_url": f"/static/{n_l}" if (nastavitve.abs_path(n_l)).exists() else None,
@@ -1466,6 +1469,7 @@ def get_nastavitve():
 async def save_nastavitve(
     tekmovanje_title: str = Form(""),
     rekordi_title: str = Form(""),
+    kraj_datum: str = Form(""),
     logo: Optional[UploadFile] = File(None),
     slika: Optional[UploadFile] = File(None),
 ):
@@ -1473,7 +1477,8 @@ async def save_nastavitve(
     from app import nastavitve
     from app.database import get_session
     pod = {k: v.strip() for k, v in [("tekmovanje_title", tekmovanje_title),
-                                     ("rekordi_title", rekordi_title)] if v and v.strip()}
+                                     ("rekordi_title", rekordi_title),
+                                     ("kraj_datum", kraj_datum)] if v and v.strip()}
     # mapa za naložene slike MORA obstajati PRED pisanjem (na svežem checkoutu ni v gitu)
     from app import nastavitve as _nst
     (_nst.abs_path("uploads")).mkdir(parents=True, exist_ok=True)

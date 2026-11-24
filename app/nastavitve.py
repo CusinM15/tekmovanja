@@ -15,6 +15,7 @@ _FILE = _DIR / "nastavitve.json"
 _DEFAULTS = {
     "tekmovanje_title": "STANKOV MEMORIAL",
     "rekordi_title": "SUPER STANKO",
+    "kraj_datum": "Jesenice, 2. 10. 2025",
     "logo": "ostcj_logo.png",      # relativno na static/
     "slika": "ostcj_slika.png",
 }

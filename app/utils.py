@@ -326,7 +326,7 @@ def _cell_par(text, font, size=10):
     return Paragraph(text if text is not None else "", st)
 
 
-def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO"):
+def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO", kraj_datum=""):
     """Pravi PDF z rezultati (reportlab):
     - uvodna stran: naslov, podnaslov, datum, seznam šol, tabela 16 tekmovalnih skupin
       (šport × spol × razred) s številom učencev in rezultatov,
@@ -407,9 +407,12 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         elems.append(Spacer(1, 0.15 * cm))
         elems.append(Paragraph(subtitle, styles["Heading2"]))
     elems.append(Spacer(1, 0.3 * cm))
-    elems.append(Paragraph(f"Datum izpisa: {datetime.now().strftime('%d.%m.%Y')}",
-                           styles["Normal"]))
-    elems.append(Spacer(1, 0.5 * cm))
+    if kraj_datum:
+        elems.append(Paragraph(kraj_datum, styles["Normal"]))
+    elems.append(Spacer(1, 0.4 * cm))
+    # PRVA STRAN = samo glava (logotip + naslov + podnaslov + kraj/datum),
+    # vse ostalo (šole, pregled skupin, rezultati) se začne na 2. strani.
+    elems.append(PageBreak())
 
     # Seznam šol
     if schools:

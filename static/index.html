@@ -284,6 +284,7 @@
     <p class="opis">Imeni in slake, prikazani na prvi strani rezultatov (gumb »Pošlji rezultate šolam«) in v PDF rekordov.</p>
     <div class="polje"><label>Naslov tekmovanja</label><input id="f-n-tekmovanje" placeholder="npr. STANKOV MEMORIAL"></div>
     <div class="polje"><label>Naslov za rekorde</label><input id="f-n-rekordi" placeholder="npr. SUPER STANKO"></div>
+    <div class="polje"><label>Kraj in datum tekmovanja</label><input id="f-n-kraj" placeholder="npr. Jesenice, 2. 10. 2025"></div>
     <div class="polje"><label>Logotip šole (slika)</label><input id="f-n-logo" type="file" accept="image/*">
       <div id="n-logo-predogled" style="margin-top:6px"></div></div>
     <div class="polje"><label>Druga slika (naslovna fotografija)</label><input id="f-n-slika" type="file" accept="image/*">
@@ -386,6 +387,7 @@ function natovoriNastavitve(){
   api('/api/nastavitve').then(function(s){
     $('f-n-tekmovanje').value = s.tekmovanje_title || '';
     $('f-n-rekordi').value = s.rekordi_title || '';
+    $('f-n-kraj').value = s.kraj_datum || '';
     var lp = $('n-logo-predogled'), sp = $('n-slika-predogled');
     if (s.logo_url){ lp.innerHTML = '<img src="' + s.logo_url + '" style="max-height:80px;border:1px solid #ccc;border-radius:6px;padding:4px">'; }
     else lp.innerHTML = '<span class="tiha">(ni logotipa)</span>';
@@ -398,6 +400,7 @@ function shraniNastavitve(){
   var fd = new FormData();
   fd.append('tekmovanje_title', ($('f-n-tekmovanje').value || '').trim());
   fd.append('rekordi_title', ($('f-n-rekordi').value || '').trim());
+  fd.append('kraj_datum', ($('f-n-kraj').value || '').trim());
   if ($('f-n-logo').files && $('f-n-logo').files[0]) fd.append('logo', $('f-n-logo').files[0]);
   if ($('f-n-slika').files && $('f-n-slika').files[0]) fd.append('slika', $('f-n-slika').files[0]);
   api('/api/nastavitve', 'POST', fd).then(function(s){
