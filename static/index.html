@@ -914,28 +914,24 @@ function izrisiKarticeRezultati(disc, ucenci){
     var deli = (d.applicable_grades || '').split(',');
     var veljavni = {};
     for (var ri = 0; ri < deli.length; ri++) veljavni[deli[ri].trim()] = true;
-    // nevtralen šport -> dve kartici (fantje ♂ / dekleta ♀), vsaka z ENO ikono
-    var spoli = (d.gender === 'M' || d.gender === 'Ž') ? [d.gender] : ['M', 'Ž'];
-    for (var si = 0; si < spoli.length; si++){
-      var sp = spoli[si];
-      var ik = (sp === 'M') ? '♂' : '♀';
-      var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', sp) : 0;
-      var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', sp) : 0;
-      var zRez2 = {}, zRez3 = {};
-      for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
-        var e = REZULTATI_DOGODKI[j];
-        if (e.discipline_id !== d.id) continue;
-        var pu = ucm[e.pupil_id];
-        if (pu && (pu.gender || '').toUpperCase() !== sp) continue;
-        if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
-        else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
-      }
-      var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
-      kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',' + "'" + sp + "'" + ')">' +
-        '<div class="ime">' + esc(d.name) + ' ' + ik + '</div>' +
-        '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
-        '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
+    // ENA kartica na disciplino, ENA ikona (fantje ♂) — nevtralni šport se NE deli.
+    // Klik odpre detail SAMO za fantje (M), zato števila štejemo za fantje.
+    var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', 'M') : 0;
+    var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', 'M') : 0;
+    var zRez2 = {}, zRez3 = {};
+    for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+      var e = REZULTATI_DOGODKI[j];
+      if (e.discipline_id !== d.id) continue;
+      var pu = ucm[e.pupil_id];
+      if (pu && (pu.gender || '').toUpperCase() !== 'M') continue;
+      if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
+      else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
     }
+    var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+    kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',' + "'M'" + ')">' +
+      '<div class="ime">' + esc(d.name) + ' ♂</div>' +
+      '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
+      '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
   }
   $('rz-kartice').innerHTML = kartice;
   $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
