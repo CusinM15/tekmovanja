@@ -532,6 +532,17 @@ function aktivirajVseSole(){
 var VSI_UCENCI = [];
 var VSE_SOLE = [];
 var VSE_DISCIPLINE = [];
+function unikatneDiscipline(disc){
+  // vrne discipline brez podvojenih IMEN (normalizirano) — da podvojena vrstica
+  // istega športa v bazi ne naredi več kartic 'tek 60m ♀' itd.
+  var seen = {}, out = [];
+  for (var i = 0; i < (disc || []).length; i++){
+    var k = String(disc[i].name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seen[k]) continue;
+    seen[k] = true; out.push(disc[i]);
+  }
+  return out;
+}
 
 function natovoriUcence(){
   return Promise.all([api('/pupils'), api('/schools?include_inactive=True')]).then(function(rez){
@@ -632,7 +643,7 @@ var TRENUTNA_DEJAVNOST = null;
 
 function natovoriDiscipline(){
   return api('/disciplines').then(function(disc){
-    VSE_DISCIPLINE = disc;
+    VSE_DISCIPLINE = unikatneDiscipline(disc);
     var vrstice = '';
     for (var i = 0; i < disc.length; i++){
       var d = disc[i];
@@ -857,7 +868,7 @@ function natovoriRezultate(){
   return Promise.all([api('/events'), api('/disciplines')]).then(function(rez){
     REZULTATI_DOGODKI = rez[0];
     var disc = rez[1];
-    VSE_DISCIPLINE = disc;
+    VSE_DISCIPLINE = unikatneDiscipline(disc);
     // N (vsi učenci, ki spadajo pod disciplino) naložimo LOČENO: če /pupils kdaj
     // odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
     api('/pupils').then(function(ucenci){
@@ -902,6 +913,8 @@ function natovoriTockeSole(){
 }
 
 function izrisiKarticeRezultati(disc, ucenci){
+  // Podvojeni športi v bazi -> le ena kartica na (šport × spol): vedno 8 kartic.
+  disc = unikatneDiscipline(disc);
   // Pregled: kartica za vsako disciplino, v dveh vrsticah x/N.
   // N = VSI učenci, ki spadajo pod to disciplino (gender + applicable_grades).
   // Ni več vezano na štartne liste, zato se N ne sme prikazati kot 0, ko štartne
