@@ -338,7 +338,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.platypus import SimpleDocTemplate, BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     buf = BytesIO()
@@ -353,8 +353,12 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         canvas.drawCentredString(A4[0] / 2.0, 0.9 * cm, kraj_datum)
         canvas.restoreState()
 
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5 * cm,
-                            bottomMargin=1.5 * cm, onPage=_footer)
+    # OPOMBA: reportlab 5.1.0 ne sproži onPage ob SimpleDocTemplate -> uporabimo
+    # BaseDocTemplate + izrecno PageTemplate (footer (kraj/datum) na vsaki strani).
+    _frame = Frame(1.5 * cm, 1.5 * cm, A4[0] - 3 * cm, A4[1] - 3 * cm, id="stran")
+    doc = BaseDocTemplate(buf, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                          leftMargin=1.5 * cm, rightMargin=1.5 * cm)
+    doc.addPageTemplates([PageTemplate(id="stran", frames=[_frame], onPage=_footer)])
 
     def _sliki_flow(logo_p, slika_p, max_h=5 * cm, max_logo_w=5 * cm, max_slika_w=6.5 * cm):
         # Logotip in slika na prvi strani (poravnano na sredino, ohranjena razmerja).
