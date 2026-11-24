@@ -2,7 +2,7 @@
 Main FastAPI application entry point.
 """
 
-from fastapi import FastAPI, Depends, HTTPException, Form, Query, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, Form, File, Query, UploadFile
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -1099,10 +1099,15 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
     schools = db.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     pupils = db.query(Pupil).all()
     records = db.query(Record).all()
+    from app import nastavitve as _nast
+    _s = _nast.get()
+    _logo = str(_nast.abs_path(_s["logo"])) if _nast.abs_path(_s["logo"]).exists() else None
+    _slika = str(_nast.abs_path(_s["slika"])) if _nast.abs_path(_s["slika"]).exists() else None
 
-    pdf = results_pdf_bytes(events, title="STANKOV MEMORIAL — rezultati",
+    pdf = results_pdf_bytes(events, title=f"{_s['tekmovanje_title']} — rezultati",
                             subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
-                            schools=schools, pupils=pupils, records=records)
+                            schools=schools, pupils=pupils, records=records,
+                            logo_path=_logo, slika_path=_slika, rekordi_title=_s["rekordi_title"])
     from datetime import datetime as _dt
     filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     return Response(
@@ -1129,13 +1134,20 @@ def email_results(
     schools = db_session.query(School).filter(School.status == SchoolStatus.ACTIVE.value).all()
     pupils = db_session.query(Pupil).all()
     records = db_session.query(Record).all()
+    from app import nastavitve as _nast
+    _s = _nast.get()
+    _logo = str(_nast.abs_path(_s["logo"])) if _nast.abs_path(_s["logo"]).exists() else None
+    _slika = str(_nast.abs_path(_s["slika"])) if _nast.abs_path(_s["slika"]).exists() else None
     pdf = results_pdf_bytes(
         events,
-        title="STANKOV MEMORIAL — rezultati",
+        title=f"{_s['tekmovanje_title']} — rezultati",
         subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
         schools=schools,
         pupils=pupils,
         records=records,
+        logo_path=_logo,
+        slika_path=_slika,
+        rekordi_title=_s["rekordi_title"],
     )
 
     # Get active schools
@@ -1429,6 +1441,63 @@ def update_record(
 def delete_record(record_id: int, db=Depends(get_db)):
     """Delete a record (best result) — prek RecordService."""
     return RecordService.delete(db, record_id)
+
+
+
+# ================= NASTAVITVE TEKMOVANJA =================
+
+@app.get("/api/nastavitve", response_model=dict, summary="Nastavitve tekmovanja")
+def get_nastavitve():
+    """Vrni ime tekmovanja, ime za rekorde in URL-je logotipa/slike (ali flags)."""
+    from app import nastavitve
+    d = nastavitve.get()
+    n_l = d["logo"]; n_s = d["slika"]
+    return {
+        "tekmovanje_title": d["tekmovanje_title"],
+        "rekordi_title": d["rekordi_title"],
+        "logo": n_l,
+        "slika": n_s,
+        "logo_url": f"/static/{n_l}" if (nastavitve.abs_path(n_l)).exists() else None,
+        "slika_url": f"/static/{n_s}" if (nastavitve.abs_path(n_s)).exists() else None,
+    }
+
+
+@app.post("/api/nastavitve", response_model=dict, summary="Shrani nastavitve tekmovanja")
+async def save_nastavitve(
+    tekmovanje_title: str = Form(""),
+    rekordi_title: str = Form(""),
+    logo: Optional[UploadFile] = File(None),
+    slika: Optional[UploadFile] = File(None),
+):
+    """Shrani imeni + (opcijsko) naložena logotip/slika."""
+    from app import nastavitve
+    from app.database import get_session
+    pod = {k: v.strip() for k, v in [("tekmovanje_title", tekmovanje_title),
+                                     ("rekordi_title", rekordi_title)] if v and v.strip()}
+    # shrani naložene slike
+    import uuid, re as _re
+    for key, up in (("logo", logo), ("slika", slika)):
+        if up is None:
+            continue
+        data = await up.read()
+        if not data:
+            continue
+        ext = (up.filename or "").rsplit(".", 1)[-1].lower() or "png"
+        ext = _re.sub(r"[^a-z0-9]", "", ext) or "png"
+        name = f"{key}_{uuid.uuid4().hex[:8]}.{ext}"
+        path = nastavitve.abs_path("uploads") / name
+        path.write_bytes(data)
+        pod[key] = f"uploads/{name}"
+    up_dir = (nastavitve.abs_path("uploads"))
+    up_dir.mkdir(parents=True, exist_ok=True)
+    nastavitve.save_update(pod)
+    return get_nastavitve()
+
+
+@app.get("/nastavitve-defaults-slike", summary="Obstajajo privzete slike?", include_in_schema=False)
+def privzete_slike():
+    from app import nastavitve
+    return {"ok": nastavitve.obstajajo_privzete()}
 
 
 @app.get("/api/smtp", response_model=dict, summary="Get SMTP settings")

@@ -326,7 +326,7 @@ def _cell_par(text, font, size=10):
     return Paragraph(text if text is not None else "", st)
 
 
-def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None):
+def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO"):
     """Pravi PDF z rezultati (reportlab):
     - uvodna stran: naslov, podnaslov, datum, seznam šol, tabela 16 tekmovalnih skupin
       (šport × spol × razred) s številom učencev in rezultatov,
@@ -344,6 +344,40 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+
+    def _sliki_flow(logo_p, slika_p, max_h=5 * cm, max_logo_w=5 * cm, max_slika_w=6.5 * cm):
+        # Logoti in slika na prvi strani (poravnano na sredino, ohranjena razmerja).
+        import os
+        from reportlab.platypus import Image as RLImage
+        from reportlab.lib.utils import ImageReader
+        flow = []
+
+        def _one(path, max_w):
+            if not path or not os.path.exists(path):
+                return None
+            try:
+                ir = ImageReader(path)
+                iw, ih = ir.getSize()
+                if iw <= 0 or ih <= 0:
+                    return None
+                scl = min(max_w / iw, max_h / ih)
+                return RLImage(path, width=iw * scl, height=ih * scl)
+            except Exception:
+                return None
+
+        l = _one(logo_p, max_logo_w)
+        s = _one(slika_p, max_slika_w)
+        if l is not None or s is not None:
+            row = [l if l is not None else "", s if s is not None else ""]
+            t = Table([row], colWidths=[max_logo_w, max_slika_w],
+                      hAlign="CENTER")
+            t.setStyle(TableStyle(
+                [("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+            flow.append(t)
+            flow.append(Spacer(1, 0.5 * cm))
+        return flow
+
     styles = getSampleStyleSheet()
     font = _reg_fonts()
     styles["Title"].fontName = font
@@ -367,6 +401,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
 
     # ── UVODNA STRAN ──────────────────────────────────────────────
     elems = []
+    elems += _sliki_flow(logo_path, slika_path)
     elems.append(Paragraph(title, styles["Title"]))
     if subtitle:
         elems.append(Spacer(1, 0.15 * cm))
@@ -504,7 +539,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     if records:
         for raz in ("2.r", "3.r"):
             elems.append(PageBreak())
-            elems.append(Paragraph("SUPER STANKO", styles["Title"]))
+            elems.append(Paragraph(rekordi_title, styles["Title"]))
             elems.append(Spacer(1, 0.2 * cm))
             elems.append(Paragraph(f"Rekordi — {raz} razred (vse discipline)",
                                    styles["Heading2"]))

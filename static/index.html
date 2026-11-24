@@ -98,6 +98,7 @@
   <button class="tab" data-tab="rekordi" onclick="preklopiTab('rekordi')">🥇 Rekordi</button>
   <button class="tab" data-tab="startne" onclick="preklopiTab('startne')">📋 Štartne liste</button>
   <button class="tab" data-tab="podatki" onclick="preklopiTab('podatki')">🗄️ Uvoz in pošta</button>
+  <button class="tab" data-tab="nastavitve" onclick="preklopiTab('nastavitve')">⚙️ Nastavitve</button>
 </div>
 
 <main>
@@ -277,6 +278,20 @@
     <div class="opozorilo">⚠️ Ta ukaz <strong>trajno izbriše</strong> vse učence in vse rezultate tekmovanja. Tega ni mogoče razveljaviti! Šole in discipline ostanejo.</div>
     <button class="gumb gumb-rdec" onclick="pocistiPodatke()">🗑️ Počisti podatke tekmovanja</button>
   </section>
+
+  <section class="stran" id="stran-nastavitve">
+    <h2>⚙️ Nastavitve tekmovanja</h2>
+    <p class="opis">Imeni in slake, prikazani na prvi strani rezultatov (gumb »Pošlji rezultate šolam«) in v PDF rekordov.</p>
+    <div class="polje"><label>Naslov tekmovanja</label><input id="f-n-tekmovanje" placeholder="npr. STANKOV MEMORIAL"></div>
+    <div class="polje"><label>Naslov za rekorde</label><input id="f-n-rekordi" placeholder="npr. SUPER STANKO"></div>
+    <div class="polje"><label>Logotip šole (slika)</label><input id="f-n-logo" type="file" accept="image/*">
+      <div id="n-logo-predogled" style="margin-top:6px"></div></div>
+    <div class="polje"><label>Druga slika (naslovna fotografija)</label><input id="f-n-slika" type="file" accept="image/*">
+      <div id="n-slika-predogled" style="margin-top:6px"></div></div>
+    <div class="vrstica-gumbov">
+      <button class="gumb gumb-zelen" onclick="shraniNastavitve()">💾 Shrani nastavitve</button>
+    </div>
+  </section>
 </main>
 
 <!-- ============ MODALI ============ -->
@@ -363,7 +378,32 @@ function preklopiTab(ime){
   if (ime === 'rekordi') natovoriRekorde();
   if (ime === 'rezultati') natovoriRezultate();
   if (ime === 'startne') natovoriStartne();
+  if (ime === 'nastavitve') natovoriNastavitve();
   if (ime === 'pregled') natovoriPregled();
+}
+
+function natovoriNastavitve(){
+  api('/api/nastavitve').then(function(s){
+    $('f-n-tekmovanje').value = s.tekmovanje_title || '';
+    $('f-n-rekordi').value = s.rekordi_title || '';
+    var lp = $('n-logo-predogled'), sp = $('n-slika-predogled');
+    if (s.logo_url){ lp.innerHTML = '<img src="' + s.logo_url + '" style="max-height:80px;border:1px solid #ccc;border-radius:6px;padding:4px">'; }
+    else lp.innerHTML = '<span class="tiha">(ni logotipa)</span>';
+    if (s.slika_url){ sp.innerHTML = '<img src="' + s.slika_url + '" style="max-height:80px;border:1px solid #ccc;border-radius:6px;padding:4px">'; }
+    else sp.innerHTML = '<span class="tiha">(ni slike)</span>';
+  }).catch(function(e){ toast('Napaka pri nalaganju nastavitev: ' + e.message, 'napaka'); });
+}
+
+function shraniNastavitve(){
+  var fd = new FormData();
+  fd.append('tekmovanje_title', ($('f-n-tekmovanje').value || '').trim());
+  fd.append('rekordi_title', ($('f-n-rekordi').value || '').trim());
+  if ($('f-n-logo').files && $('f-n-logo').files[0]) fd.append('logo', $('f-n-logo').files[0]);
+  if ($('f-n-slika').files && $('f-n-slika').files[0]) fd.append('slika', $('f-n-slika').files[0]);
+  api('/api/nastavitve', 'POST', fd).then(function(s){
+    toast('Nastavitve shranjene.', 'ok');
+    natovoriNastavitve();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
 /* ================= API ================= */

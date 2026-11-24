@@ -5,3 +5,7 @@ __pycache__/
 *.sqlite
 *.sqlite3
 .pytest_cache/
+
+# nastavitve/slike (runtime, ne v git)
+static/nastavitve.json
+static/uploads/
