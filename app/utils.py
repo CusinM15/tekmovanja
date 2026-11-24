@@ -445,29 +445,44 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     records = records or []
 
     # 16 skupin (4 × M/Ž × 2.r/3.r).
-    # PDF je namenjen KOMPETENČNIM (privzetim) 4 športom. Vse podatke preberemo
-    # sveže iz sqlite v tem trenutku, a združimo le privzete športe — stari/siroti
-    # športi z rezultati zato ne smejo dodati strani.
+    # Skupine gradimo IZ DEJANSKIH DISCIPLIN V BAZI (Discipline), ne iz
+    # "kdor trenutno ima event". Discipline preživijo gumb "Počisti podatke
+    # tekmovanja"; sveži (CompetitionEvent) rezultati pa se na skupino vežejo po
+    # DISCIPLINE_ID (ne po krhkem ujemanju imena). Tako je PDF VEDNO 20 strani
+    # (uvodna + točke šol + 16 skupin, tudi prazne + SUPER STANKO 2.r/3.r) in
+    # "fresh" rezultati, vneseni/uvezeni v app, se na njih vedno pokažejo.
     from app.settings import app_config as _cfg
+    from app.database import DBSession as _db
+    from app.models import Discipline as _Disc
     _prvi_disc = {k.lower() for k in (getattr(_cfg, "default_disciplines", None) or {})}
-    events = [ev for ev in events if ev.discipline and ev.discipline.name
-              and ev.discipline.name.lower() in _prvi_disc]
-    by_ime = {}
-    for ev in events:
-        if ev.discipline and ev.discipline.name:
-            by_ime.setdefault(ev.discipline.name.lower(), ev.discipline)
+    _disci = _db.query(_Disc).all()
+    # disciplino iz baze najdemo po normaliziranem imenu (velike/male, presledki
+    # na robu) — variacije v imenu ne smejo izbrisati skupine.
+    by_norm = {}
+    for _d in _disci:
+        by_norm[(_d.name or "").lower().strip()] = _d.id
     skupine = []
     for _ime in (getattr(_cfg, "default_disciplines", None) or {}):
-        _d = by_ime.get(_ime.lower())
-        if not _d:
+        _did = by_norm.get((_ime or "").lower().strip())
+        if _did is None:
             continue
         for spol in ("M", "Ž"):
             for raz in ("2.r", "3.r"):
-                skupine.append((_d.id, raz, spol))
+                skupine.append((_did, raz, spol))
+    _skupine_ids = {g[0] for g in skupine}
+    # evente omejimo na te discipline (sirote/stari športi ne dodajajo strani)
+    events = [ev for ev in events
+              if ev.discipline and ev.discipline_id in _skupine_ids]
 
     def _disc_ime(ev, did, prefix="Disciplina ID"):
-        ime = (ev.discipline.name if ev.discipline else f"{prefix} {did}")
-        return ime.replace("♀", "").replace("♂", "").strip()
+        # disciplina morda nima nobenega eventa (prazna skupina po "Počisti")
+        # -> ev je None; ime vzamemo iz Discipline tabele (_disci že v slogu).
+        if ev is not None and ev.discipline:
+            ime = ev.discipline.name
+        else:
+            ime = next((d.name for d in _disci if getattr(d, "id", None) == did),
+                       f"{prefix} {did}")
+        return (ime or "").replace("♀", "").replace("♂", "").strip()
 
     elems = []
 
