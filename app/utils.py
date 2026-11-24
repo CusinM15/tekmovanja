@@ -445,16 +445,25 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     records = records or []
 
     # 16 skupin (4 × M/Ž × 2.r/3.r).
-    # Upoštevamo SAMO discipline, ki ŠE OBSTAJAJO (ev.discipline). Če je bila
-    # disciplina izbrisana in so od nje ostali "sirotni" rezultati v bazi,
-    # ti ne smejo več šteti — vse bere sveže iz sqlite.
+    # PDF je namenjen KOMPETENČNIM (privzetim) 4 športom. Vse podatke preberemo
+    # sveže iz sqlite v tem trenutku, a združimo le privzete športe — stari/siroti
+    # športi z rezultati zato ne smejo dodati strani.
+    from app.settings import app_config as _cfg
+    _prvi_disc = {k.lower() for k in (getattr(_cfg, "default_disciplines", None) or {})}
+    events = [ev for ev in events if ev.discipline and ev.discipline.name
+              and ev.discipline.name.lower() in _prvi_disc]
+    by_ime = {}
+    for ev in events:
+        if ev.discipline and ev.discipline.name:
+            by_ime.setdefault(ev.discipline.name.lower(), ev.discipline)
     skupine = []
-    disc_ids = sorted({ev.discipline_id for ev in events
-                       if ev.discipline_id and ev.discipline})
-    for did in disc_ids:
+    for _ime in (getattr(_cfg, "default_disciplines", None) or {}):
+        _d = by_ime.get(_ime.lower())
+        if not _d:
+            continue
         for spol in ("M", "Ž"):
             for raz in ("2.r", "3.r"):
-                skupine.append((did, raz, spol))
+                skupine.append((_d.id, raz, spol))
 
     def _disc_ime(ev, did, prefix="Disciplina ID"):
         ime = (ev.discipline.name if ev.discipline else f"{prefix} {did}")
