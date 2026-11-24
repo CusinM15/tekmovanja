@@ -669,7 +669,7 @@ def _csv_template():
         "   - Ime in priimek (npr. Ana Novak)\n"
         "   - Razred: samo 2 ali 3 (brez .r)\n"
         "   - Spol: M (fant) ali Ž (punca)\n"
-        "   - Discipline: ID-je iz tabele zgoraj (1-4), ločene s PRESLEDKOM — npr. 1 2 4 (učenec nastopa v teh športih)\n"
+        "   - Discipline: ID-je iz tabele zgoraj (1-4), ločene s PRESLEDKOM — npr. 1 2 4. VAŽNO: vsak učenec naj nastopa v NAJVEČ 2 disciplinah! Če jih vpišeš več, se upošteva zgolj prvi dve.\n"
         "3. Datoteko shrani in vrni organizatorju.\n"
         "\n"
     )
@@ -948,6 +948,10 @@ async def import_csv(
     records = []
     start_entries = 0
     start_lists_created = 0
+    # Omejitev: vsak učenec nastopa v NAJVEČ 2 disciplina (prvi dve po vrstnem
+    # redu v datoteki). Tu štejemo, koliko disciplin že ima vsak učenec; dodatne
+    # (3., 4., ...) po uvozu preprosto preskočimo (upoštevamo zgolj prvi dve).
+    st_disc_po_ucencu = {}   # pupil_id -> [disc_id, ...] (vrstni red vpisa)
 
     # Preskoči glavo in slovenski primer vrstico ("Ime,Priimek,Šola...")
     data_rows = rows[header_idx+1:]
@@ -1064,6 +1068,11 @@ async def import_csv(
             errors.append(f"Vrstica {i}: manjka disciplina — vpiši ID-je (1-4), ločene z vejico npr. 1,2,4.")
             continue
         for disc_id in disc_ids:
+            # vsak učenec naj nastopa v NAJVEČ 2 disciplina — upoštevamo prvi dve
+            sne = st_disc_po_ucencu.setdefault(pupil.id, [])
+            if len(sne) >= 2:
+                continue
+            sne.append(disc_id)
             disc = _disciplina_po_id(db, disc_id)
             if disc is None:
                 errors.append(f"Vrstica {i}: neznan ID discipline {disc_id}.")

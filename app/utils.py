@@ -37,7 +37,9 @@ def generate_csv_template() -> str:
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
         "2. Vsako vrstico spodaj izpolni za ENEGA učenca (razred: 2 ali 3; spol: M ali Ž;\n"
-        "   Discipline: ID-je 1-4 iz tabele, ločene s presledkom npr. 1 2 4).\n"
+        "   Discipline: ID-je 1-4 iz tabele, ločene s presledkom npr. 1 2 4. VAŽNO: vsak\n"
+        "   učenec naj nastopa v NAJVEČ 2 disciplinah — če jih vpišeš več, se po uvozu\n"
+        "   upošteva zgolj prvi dve).\n"
         "3. Datoteko shrani in vrni organizatorju.\n\n"
         "ŠOLA:\n<ime svoje šole>\n\n"
         "ID,Disciplina (šport)\n"
@@ -482,6 +484,20 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
                        f"{prefix} {did}")
         return (ime or "").replace("♀", "").replace("♂", "").strip()
 
+    # Prijavljeni (registrirani) učenci po skupini (discipline × razred × spol)
+    # iz štartnih list — ti naj se na PDF prikažejo TUDI če še nimajo rezultata.
+    from app.database import DBSession as _db2
+    from app.models import StartList as _SL
+    prijavljeni = {}   # (did, raz, spol) -> {pupil_id: pupil}
+    try:
+        for sl in _db2.query(_SL).all():
+            kljuc = (sl.discipline_id, sl.grade, sl.gender)
+            m = prijavljeni.setdefault(kljuc, {})
+            for p in sl.pupils:
+                m[p.id] = p
+    except Exception:
+        prijavljeni = {}
+
     elems = []
 
     # ── 1. UVODNA STRAN ────────────────────────────────────────────
@@ -550,20 +566,29 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     # ── 3–18. REZULTATI PO SKUPINAH (16 skupin, ena stran na skupino) ──
     for did, raz, spol in skupine:
         ime = _disc_ime(next((ev for ev in events if ev.discipline and ev.discipline_id == did), None), did)
-        rez = [ev for ev in events
+        rez = {ev.pupil_id: ev for ev in events
                if ev.discipline_id == did and ev.pupil
-               and ev.pupil.grade == raz and ev.pupil.gender == spol]
+               and ev.pupil.grade == raz and ev.pupil.gender == spol}
+        _prijav = prijavljeni.get((did, raz, spol), {})
         from app.models import disciplina_smer
-        if disciplina_smer(ime) == "higher":
-            # skok/met: večji rezultat prvi (padajoče)
-            rez.sort(key=lambda ev: (ev.time is None, -(ev.time if ev.time is not None else 0)))
-        else:
-            # tek: manjši rezultat prvi (naraščajoče)
-            rez.sort(key=lambda ev: (ev.time is None, ev.time if ev.time is not None else 0))
+        # Prijavljeni učenci (registrirani) te skupine, tudi tisti brez rezultata.
+        ucenci = []
+        for ev in rez.values():
+            ucenci.append((ev.pupil_id, ev.pupil, ev))
+        for pid, p in _prijav.items():
+            if pid not in rez:
+                ucenci.append((pid, p, None))
+        # sortiraj: tisti z rezultatom po mestu (najboljši 1. na vrhu), brez rezultata zadaj
+        def _sort(k):
+            pid, p, ev = k
+            if ev is None or ev.time is None:
+                return (1, 0)
+            return (0, ev.time if disciplina_smer(ime) == "lower" else -ev.time)
+        ucenci.sort(key=_sort)
         elems.append(Paragraph(f"{ime} — {spol_ime(spol)}, {raz}", styles["Heading2"]))
-        if not rez:
+        if not ucenci:
             elems.append(Spacer(1, 0.3 * cm))
-            elems.append(Paragraph("Ni rezultatov za to skupino.", styles["Normal"]))
+            elems.append(Paragraph("Ni nastopajočih niti rezultatov za to skupino.", styles["Normal"]))
             elems.append(PageBreak())
             continue
         elems.append(Spacer(1, 0.2 * cm))
@@ -572,14 +597,22 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
                  _cell_par("Šola", font, size=9),
                  _cell_par("Čas / dolžina", font, size=9),
                  _cell_par("Opombe", font, size=9)]]
-        for i, ev in enumerate(rez, 1):
-            p = ev.pupil
+        for i, (pid, p, ev) in enumerate(ucenci, 1):
+            if ev is not None:
+                prikaz_mesta = str(i) + "."
+                cas_val = f"{ev.time:.2f} {enota_za_disciplino(ime)}" if ev.time is not None else "—"
+                opombe = (ev.notes or "") or ""
+            else:
+                # prijavljen, a brez rezultata — mesto in čas pustimo prazna (—)
+                prikaz_mesta = "—"
+                cas_val = "—"
+                opombe = "prijavljen"
             data.append([
-                _cell_par(str(i) + ".", font, size=9),
+                _cell_par(prikaz_mesta, font, size=9),
                 _cell_par(f"{p.first_name} {p.last_name}" if p else "—", font, size=9),
                 _cell_par((p.school.name if p and p.school else "") or "—", font, size=9),
-                _cell_par(f"{ev.time:.2f} {enota_za_disciplino(ime)}" if ev.time is not None else "—", font, size=9),
-                _cell_par((ev.notes or "") or "", font, size=9),
+                _cell_par(cas_val, font, size=9),
+                _cell_par(opombe, font, size=9),
             ])
         elems.append(_tab(data, [1.6 * cm, 4.6 * cm, 4.6 * cm, 2.8 * cm, 2.4 * cm]))
         elems.append(PageBreak())

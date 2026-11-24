@@ -629,6 +629,7 @@ function shraniUcenca(id){
   zahteva.then(function(){
     toast(id ? 'Učenec posodobljen.' : 'Učenec dodan.', 'ok');
     zapriModal(); natovoriUcence(); natovoriPregled();
+    if (typeof natovoriRezultate === 'function') natovoriRezultate();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
@@ -1031,10 +1032,11 @@ function prikaziRezultateDiscipline(id, spolFil){
       for (var x = 0; x < kandidati.length; x++){
         var u = kandidati[x].u, e = kandidati[x].e;
         st++;
-        var akcija = e
-          ? '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi</span>&nbsp;' +
-            '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši</span>'
-          : '<span class="povezava" onclick="odpriModalRezultat(null,' + id + ',' + u.id + ')">＋ Dodaj rezultat</span>';
+        var urejanjeU = '<span class="povezava" onclick="odpriModalUcenec(' + u.id + ')">👤 Uredi učenca</span>&nbsp;';
+        var akcija = urejanjeU + (e
+          ? '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi rezultat</span>&nbsp;' +
+            '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši rezultat</span>'
+          : '<span class="povezava" onclick="odpriModalRezultat(null,' + id + ',' + u.id + ')">＋ Dodaj rezultat</span>');
         vrstice += '<tr>' +
           '<td>' + esc(u.first_name + ' ' + u.last_name) + '</td>' +
           '<td>' + esc(u.school_name || '') + '</td>' +

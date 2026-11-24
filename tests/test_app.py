@@ -343,7 +343,8 @@ def test_uvoz_slovenska_glava(client):
            "Slovenska,Glava,3,Ž,1 2 4\n")
     j = client.post("/import-csv", files={"file": ("s.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert j["status"] == "success", j
-    assert j["records_created"] == 1 and j["start_entries"] == 3, j
+    # novo pravilo: vsak učenec nastopa v največ 2 disciplina → od "1 2 4" le 2
+    assert j["records_created"] == 1 and j["start_entries"] == 2, j
 
 
 def test_uvoz_vecih_disciplin_brez_narekovajev(client):
@@ -354,7 +355,8 @@ def test_uvoz_vecih_disciplin_brez_narekovajev(client):
            "Več,Disciplin,2,M,1,2,4\n")
     j = client.post("/import-csv", files={"file": ("m.csv", csv.encode("utf-8"), "text/csv")}).json()
     assert j["status"] == "success", j
-    assert j["start_entries"] == 3, j
+    # novo pravilo: največ 2 disciplina na učenca → od "1,2,4" le 2 (1 in 2)
+    assert j["start_entries"] == 2, j
 
 
 def test_delete_data_nato_ponoven_uvoz_csv(client):
