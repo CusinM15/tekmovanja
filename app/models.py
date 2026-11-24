@@ -300,12 +300,14 @@ def disciplina_smer(ime):
     """Smer 'boljši' rezultat za disciplino:
     - 'lower'  -> boljši MANJŠI rezultat (tek na progo / čas),
     - 'higher' -> boljši VEČJI rezultat (skok, met / dolžina).
-    Prepoznamo po imenu: vsebuje 'tek' ALI oznako proge (npr. 60m/100m/400m)
-    => lower; sicer (skok/met/višina/daljina) => higher.
+    Prepoznamo po imenu: ime se ZAČNE s 'tek' (npr. 'tek 60m') ali nosi oznako
+    proge (60m/100m/400m) => lower; sicer (skok/met/višina/daljina) => higher.
+    POZOR: ne smemo testirati 'tek' kot PODNIZ — 'met vorTEKsa' vsebuje 'tek'
+    in bi napačno odda 'lower' (met je 'higher').
     """
     n = (ime or "").lower()
-    if "tek" in n:
+    if n.lstrip().startswith("tek"):
         return "lower"
-    if __import__("re").search(r'\d+\s*m\b', n):
+    if __import__("re").search(r'\b\d+\s*m\b', n):
         return "lower"
     return "higher"

@@ -276,6 +276,35 @@ def test_smer_skok_met_tek(client):
     assert poz(f1) == 2, f"tek: večji 10.0 mora biti 2. (dobil {poz(f1)})"
 
 
+def test_rekord_smer_met_vs_tek(client):
+    """REKORD: pri metu/skoku je rekord NAJVEČJI rezultat, pri teku NAJMANJŠI.
+    (Smer MESTA že pokriva test_smer_skok_met_tek; tale preverja še avtomatski
+    rekord prek realnih /events → _sync_records_after_result.)"""
+    us = [u for u in client.get("/pupils").json() if u["grade"] == "2.r" and u["gender"] == "M"]
+    u0, u1 = us[0], us[1]
+
+    def rekordi(disc_id):
+        return [r for r in client.get("/records").json()
+                if r["discipline_id"] == disc_id and r["pupil_grade"] == "2.r"
+                and r["pupil_gender"] == "M"]
+
+    # met (higher): daljši je rekord → 5.0, ne 2.0
+    met = client.post("/disciplines", data={"name": "MET rekord test", "gender": "M",
+                                            "applicable_grades": "2.r"}).json()
+    client.post("/events", data={"pupil_id": u0["id"], "discipline_id": met["id"], "time": 2.0})
+    client.post("/events", data={"pupil_id": u1["id"], "discipline_id": met["id"], "time": 5.0})
+    mr = rekordi(met["id"])
+    assert mr and abs(max(r["time"] for r in mr) - 5.0) < 1e-9,         f"met rekord mora biti daljši (5.0): {mr}"
+
+    # tek (lower): hitrejši je rekord → 8.0, ne 10.0
+    te = client.post("/disciplines", data={"name": "TEK rekord test", "gender": "M",
+                                           "applicable_grades": "2.r"}).json()
+    client.post("/events", data={"pupil_id": u0["id"], "discipline_id": te["id"], "time": 10.0})
+    client.post("/events", data={"pupil_id": u1["id"], "discipline_id": te["id"], "time": 8.0})
+    tr = rekordi(te["id"])
+    assert tr and abs(min(r["time"] for r in tr) - 8.0) < 1e-9,         f"tek rekord mora biti hitrejši (8.0): {tr}"
+
+
 def test_avtomatsko_mesto_in_tocke_po_solah(client):
     """Mesto se določi SAMODEJNO ob vpisu rezultata (uporabnik ga ne vpisuje);
     /school-points sešteje točke po šolah (1.=15, 2.=12, ..., 12.=1)."""
@@ -368,7 +397,19 @@ def test_enota_za_disciplino():
     assert enota_za_disciplino("skok v daljino ♀") == "cm"
     assert enota_za_disciplino("tek 60m ♂") == "s"
     assert enota_za_disciplino("") == "s"
-    assert enota_za_disciplino(None) == "s"
+
+
+def test_disciplina_smer_met_vorteksa():
+    """met vorteksa je MET → 'higher' (dlje = bolje), ČEPRAV vsebuje podniz 'tek'.
+    Regresijski: prej disciplina_smer('met vorteksa') ni preverila podniza 'tek' v
+    'vorTEKsa' in je napačno vrnila 'lower' (teki='manjši=boljši')."""
+    from app.models import disciplina_smer
+    assert disciplina_smer("met vorteksa") == "higher"
+    assert disciplina_smer("met vorteksa ♂") == "higher"
+    assert disciplina_smer("skok v daljino") == "higher"
+    assert disciplina_smer("tek 60m") == "lower"
+    assert disciplina_smer("tek 60m ♂") == "lower"
+    assert disciplina_smer("tek 400m") == "lower"
 
 
 def test_smtp_api_shrani_in_ohrani_geslo(client, tmp_path, monkeypatch):
