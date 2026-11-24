@@ -1474,6 +1474,9 @@ async def save_nastavitve(
     from app.database import get_session
     pod = {k: v.strip() for k, v in [("tekmovanje_title", tekmovanje_title),
                                      ("rekordi_title", rekordi_title)] if v and v.strip()}
+    # mapa za naložene slike MORA obstajati PRED pisanjem (na svežem checkoutu ni v gitu)
+    from app import nastavitve as _nst
+    (_nst.abs_path("uploads")).mkdir(parents=True, exist_ok=True)
     # shrani naložene slike
     import uuid, re as _re
     for key, up in (("logo", logo), ("slika", slika)):
@@ -1488,8 +1491,6 @@ async def save_nastavitve(
         path = nastavitve.abs_path("uploads") / name
         path.write_bytes(data)
         pod[key] = f"uploads/{name}"
-    up_dir = (nastavitve.abs_path("uploads"))
-    up_dir.mkdir(parents=True, exist_ok=True)
     nastavitve.save_update(pod)
     return get_nastavitve()
 
