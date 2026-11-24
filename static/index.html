@@ -960,8 +960,10 @@ function prikaziRezultateDiscipline(id){
     var html = '';
     for (var g = 0; g < skupine.length; g++){
       var raz = skupine[g][0], spol = skupine[g][1], naslov = skupine[g][2];
-      // Prikažemo le tisto skupino, ki ustreza spolu discipline.
-      if ((spol || '').toUpperCase() !== discSpol) continue;
+      // Prikažemo le tisto skupino, ki ustreza spolu discipline;
+      // če je disciplina spolno nevtralna (''), prikažemo VSE 4 skupine (M/Ž × 2.r/3.r).
+      var prikaziVseSkupine = !dsc.gender || dsc.gender === '';
+      if (!prikaziVseSkupine && (spol || '').toUpperCase() !== discSpol) continue;
       // Vsi učenci tega razreda in spola, ne glede na to, ali imajo rezultat.
       var izbrani = [];
       for (var p = 0; p < ucenci.length; p++){
@@ -971,12 +973,19 @@ function prikaziRezultateDiscipline(id){
         izbrani.push(u);
       }
       var vrstice = '', st = 0;
+      // razvrsti: tisti z rezultatom po mestu (najboljši = mesto 1 na vrhu), brez rezultata zadaj
+      var kandidati = [];
       for (var x = 0; x < izbrani.length; x++){
         var u = izbrani[x];
         var e = null;
         for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
           if (REZULTATI_DOGODKI[j].discipline_id === id && REZULTATI_DOGODKI[j].pupil_id === u.id){ e = REZULTATI_DOGODKI[j]; break; }
         }
+        kandidati.push({ u: u, e: e, m: (e && e.position != null) ? e.position : 1e9 });
+      }
+      kandidati.sort(function(a, b){ return a.m - b.m; });
+      for (var x = 0; x < kandidati.length; x++){
+        var u = kandidati[x].u, e = kandidati[x].e;
         st++;
         var akcija = e
           ? '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi</span>&nbsp;' +
