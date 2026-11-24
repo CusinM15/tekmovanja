@@ -188,29 +188,23 @@ def _seed_defaults():
             rnd = random.Random(42)
             from datetime import datetime as _dt
 
-            # Rezultate dobi LE del nastopajočih (ne vsi 15 na disciplino):
+            # Rezultate dobi LE del nastopajočih (ne vsi 15 na disciplino), iz OBEH
+            # spolskih bazenov — da ima vsaka tekmovalna skupina (šport × spol × razred
+            # = 16) svoje rezultate. Disciplina = šport (spolna nevtralna, gender="");
+            # spol učenca iz stolpca določi skupino. Vsak šport dobi svoj pas 15 fantov
+            # in 15 deklet (ne istih 15 za vse discipline).
             REZULTATOV_PO_DISCIPLINI = 9
-            moske = [(k, v) for k, v in disc.items() if ("♂" in k) or k.rstrip().endswith("M")]
-            zenske = [(k, v) for k, v in disc.items() if not (("♂" in k) or k.rstrip().endswith("M"))]
-            # po 4 discipline; vsaka dobi 60/4=15 učencev iz svojega spolskega bazena
-            for idx, (disc_ime, disc_id) in enumerate(moske):
-                pas = ucenci_m[idx * 15: idx * 15 + 15]
-                for mesto, u in enumerate(pas[:REZULTATOV_PO_DISCIPLINI], start=1):
-                    if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
-                        cas = round(rnd.uniform(2.5, 5.5), 2)
-                    else:
-                        cas = round(rnd.uniform(9.0, 16.0), 2)
-                    db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc_id,
-                                            time=cas, position=mesto))
-            for idx, (disc_ime, disc_id) in enumerate(zenske):
-                pas = ucenci_z[idx * 15: idx * 15 + 15]
-                for mesto, u in enumerate(pas[:REZULTATOV_PO_DISCIPLINI], start=1):
-                    if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
-                        cas = round(rnd.uniform(2.5, 5.5), 2)
-                    else:
-                        cas = round(rnd.uniform(9.0, 16.0), 2)
-                    db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc_id,
-                                            time=cas, position=mesto))
+            vse_discipline = list(disc.items())  # 4 športi
+            for idx, (disc_ime, disc_id) in enumerate(vse_discipline):
+                for bazen in (ucenci_m, ucenci_z):
+                    pas = bazen[idx * 15: idx * 15 + 15]
+                    for mesto, u in enumerate(pas[:REZULTATOV_PO_DISCIPLINI], start=1):
+                        if disc_ime.startswith("skok v daljino") or disc_ime.startswith("met vorteksa"):
+                            cas = round(rnd.uniform(2.5, 5.5), 2)
+                        else:
+                            cas = round(rnd.uniform(9.0, 16.0), 2)
+                        db.add(CompetitionEvent(pupil_id=u.id, discipline_id=disc_id,
+                                                time=cas, position=mesto))
             db.commit()
 
             # Rekordi: za VSAKO disciplino × spol × razred (16 skupin)

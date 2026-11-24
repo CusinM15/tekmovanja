@@ -9,3 +9,4 @@ __pycache__/
 # nastavitve/slike (runtime, ne v git)
 static/nastavitve.json
 static/uploads/
+*.bak

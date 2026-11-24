@@ -82,7 +82,7 @@ def test_seed_podatki_obstajajo(client):
     """Ob prvem zagonu mora biti baza napolnjena (tudi v testni bazi)."""
     assert len(_disciplines(client)) == 4, "samo 4 discipline (športi: tek 60m, tek 400m, skok, met)"
     assert len(client.get("/pupils").json()) == 120
-    assert len(_events(client)) == 36, "rezultate dobi LE del nastopajočih (9 × 4 discipline)"
+    assert len(_events(client)) == 72, "rezultate dobi LE del nastopajočih iz OBEH spolov (9 × 4 discipline × fantje+dekleta)"
     assert len(_start_lists(client)) == 16, "4 športi × 2 razreda × 2 spola = 16 štartnih list"
 
 
