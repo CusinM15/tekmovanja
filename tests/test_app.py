@@ -514,16 +514,21 @@ def test_results_pdf_uvodna_stran_in_16_skupin(client):
     assert len(r.content) > 5000, "PDF mora vsebovati vsebino (ne prazen)"
 
     src = io.open("/home/matej/forgejo/opensource/tekmovanja/app/utils.py", encoding="utf-8").read()
-    msrc = io.open("/home/matej/forgejo/opensource/tekmovanja/app/main.py", encoding="utf-8").read()
-    # naslov dogodka prihaja iz endpointa (main.py)
-    assert "STANKOV" in msrc, "naslov dogodka v endpointu"
-    # uvodna stran v utils.py
-    assert "Sodelujoče šole" in src
-    assert "Pregled tekmovalnih skupin" in src
+    # naslov tekmovanja prihaja iz nastavitev (app/nastavitve.py privzeto)
+    assert "STANKOV MEMORIAL" in io.open(
+        "/home/matej/forgejo/opensource/tekmovanja/app/nastavitve.py", encoding="utf-8").read()
+    # uvodna stran (po vzoru Rezultati 2025.docx): šola + naslov + podnaslov + kraj/datum
+    assert "sola_ime" in src, "uvodna stran ima ime šole"
+    assert "OSNOVNA ŠOLA TONETA ČUFARJA JESENICE" in src
+    assert "kraj_datum" in src
     assert "PageBreak" in src, "uvodna stran mora biti ločena od rezultatov"
-    # zadnja stran: razvrstitev šol po točkah
+    # 2. stran: razvrstitev šol po točkah
     assert "Rezultati po šolah" in src
     assert "points_for_position" in src, "točke po šolah se računajo iz mest"
-    # SUPER STANKO: rekordi, ena stran na razred
+    # 16 skupin: vsaka disciplina × M/Ž × 2.r/3.r, vsaka na svoji strani
+    assert 'for spol in ("M", "Ž")' in src
+    assert 'for raz in ("2.r", "3.r")' in src
+    assert "skupine" in src
+    # SUPER STANKO: rekordi, ena stran na razred (2.r nato 3.r)
     assert "SUPER STANKO" in src
     assert '("2.r", "3.r")' in src, "ena stran na razred (2.r in 3.r)"
