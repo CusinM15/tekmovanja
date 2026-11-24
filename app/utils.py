@@ -342,7 +342,19 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+
+    def _footer(canvas, doc):
+        # datum/kraj tekmovanja v nogi (footer) vsake strani
+        if not kraj_datum:
+            return
+        canvas.saveState()
+        canvas.setFont(font, 9)
+        canvas.setFillColor(colors.HexColor("#888888"))
+        canvas.drawCentredString(A4[0] / 2.0, 0.9 * cm, kraj_datum)
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5 * cm,
+                            bottomMargin=1.5 * cm, onPage=_footer)
 
     def _sliki_flow(logo_p, slika_p, max_h=5 * cm, max_logo_w=5 * cm, max_slika_w=6.5 * cm):
         # Logotip in slika na prvi strani (poravnano na sredino, ohranjena razmerja).
@@ -428,9 +440,13 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     pupils = pupils or []
     records = records or []
 
-    # 16 skupin (4 × M/Ž × 2.r/3.r)
+    # 16 skupin (4 × M/Ž × 2.r/3.r).
+    # Upoštevamo SAMO discipline, ki ŠE OBSTAJAJO (ev.discipline). Če je bila
+    # disciplina izbrisana in so od nje ostali "sirotni" rezultati v bazi,
+    # ti ne smejo več šteti — vse bere sveže iz sqlite.
     skupine = []
-    disc_ids = sorted({ev.discipline_id for ev in events if ev.discipline_id})
+    disc_ids = sorted({ev.discipline_id for ev in events
+                       if ev.discipline_id and ev.discipline})
     for did in disc_ids:
         for spol in ("M", "Ž"):
             for raz in ("2.r", "3.r"):
@@ -442,44 +458,43 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
 
     elems = []
 
-    # ── 1. UVODNA STRAN (natanko po Rezultati 2025.docx) ─────────────
-    # zgornji pas: šolski grb (levo) + ime šole v temno modri (desno)
-    logo_img = _im(logo_path, 3.2 * cm, 4.6 * cm)
+    # ── 1. UVODNA STRAN ────────────────────────────────────────────
+    # zgornji pas: logotip levo zgoraj + ime šole (manjši font) zraven
+    logo_img = _im(logo_path, 2.5 * cm, 3.6 * cm)
     ime_sola = Paragraph(sola_ime.rstrip(),
-                         ParagraphStyle("cov_sola", fontName=font, fontSize=18.5,
-                                        leading=22, textColor=colors.HexColor("#1F3864"),
+                         ParagraphStyle("cov_sola", fontName=font, fontSize=13,
+                                        leading=16, textColor=colors.HexColor("#1F3864"),
                                         alignment=0))
     nav = Table([[logo_img if logo_img else "", ime_sola]],
-                colWidths=[4.0 * cm, 10.5 * cm], hAlign="CENTER")
+                colWidths=[3.3 * cm, 11.0 * cm], hAlign="LEFT")
     nav.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (0, 0), "RIGHT"),
-        ("ALIGN", (1, 0), (1, 0), "LEFT"),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     elems.append(nav)
-    elems.append(Spacer(1, 1.0 * cm))
-    # velik naslov na sredini
+    elems.append(Spacer(1, 0.7 * cm))
+    # naslov na sredini
     elems.append(Paragraph(title,
-        ParagraphStyle("cov_t", fontName=font, fontSize=46, leading=52,
-                       textColor=colors.black, alignment=1,
-                       spaceAfter=6)))
+        ParagraphStyle("cov_t", fontName=font, fontSize=34, leading=40,
+                       textColor=colors.black, alignment=1)))
+    # 2 prazni vrstici (za naslovom)
+    elems.append(Spacer(1, 1.0 * cm))
+    elems.append(Spacer(1, 1.0 * cm))
     # fotografija na sredini
     foto = _im(slika_path, 10.0 * cm, 9.0 * cm)
     if foto:
-        elems.append(Spacer(1, 0.5 * cm))
+        elems.append(Spacer(1, 0.3 * cm))
         elems.append(foto)
-    # podnaslov + kraj/datum na sredini
+    # ena prazna vrstica
+    elems.append(Spacer(1, 0.6 * cm))
+    # podnaslov na sredini (datum je v footerju)
     if subtitle:
-        elems.append(Spacer(1, 0.6 * cm))
         elems.append(Paragraph(subtitle,
-            ParagraphStyle("cov_s", fontName=font, fontSize=22, leading=26,
-                           textColor=colors.HexColor("#262626"), alignment=1)))
-    if kraj_datum:
-        elems.append(Spacer(1, 0.2 * cm))
-        elems.append(Paragraph(kraj_datum,
-            ParagraphStyle("cov_d", fontName=font, fontSize=20, leading=24,
+            ParagraphStyle("cov_s", fontName=font, fontSize=20, leading=24,
                            textColor=colors.HexColor("#262626"), alignment=1)))
     elems.append(PageBreak())
 
@@ -512,7 +527,13 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         rez = [ev for ev in events
                if ev.discipline_id == did and ev.pupil
                and ev.pupil.grade == raz and ev.pupil.gender == spol]
-        rez.sort(key=lambda ev: (ev.time if ev.time is not None else float("inf")))
+        from app.models import disciplina_smer
+        if disciplina_smer(ime) == "higher":
+            # skok/met: večji rezultat prvi (padajoče)
+            rez.sort(key=lambda ev: (ev.time is None, -(ev.time if ev.time is not None else 0)))
+        else:
+            # tek: manjši rezultat prvi (naraščajoče)
+            rez.sort(key=lambda ev: (ev.time is None, ev.time if ev.time is not None else 0))
         elems.append(Paragraph(f"{ime} — {spol_ime(spol)}, {raz}", styles["Heading2"]))
         if not rez:
             elems.append(Spacer(1, 0.3 * cm))
@@ -551,10 +572,15 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         def _rim(r):
             ime = (r.discipline.name if r.discipline else f"ID {r.discipline_id}")
             return ime.replace("♀", "").replace("♂", "").strip()
-        razvr = sorted(rek_raz, key=lambda r: (
-            str(_rim(r)),
-            r.time if r.time is not None else float("inf"),
-        ))
+        from app.models import disciplina_smer
+        def _rrec_key(r):
+            ime = _rim(r)
+            smer = disciplina_smer(ime)
+            t = r.time
+            if t is None:
+                return (ime, 1, 0)
+            return (ime, 0, t if smer == "lower" else -t)
+        razvr = sorted(rek_raz, key=_rrec_key)
         data = [[_cell_par("Disciplina", font, size=9),
                  _cell_par("Spol", font, size=9),
                  _cell_par("Učenec", font, size=9),

@@ -1108,7 +1108,12 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
     )
 
 @app.post("/send-results", response_model=dict, summary="Email results PDF to active schools")

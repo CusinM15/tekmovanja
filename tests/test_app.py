@@ -253,6 +253,29 @@ def test_avtomatizirani_rekordi_ob_vpisu_rezultata(client):
     assert len(od3) == 2, f"slabši -> nespremenjeno: {od3}"
 
 
+def test_smer_skok_met_tek(client):
+    """Pri skoku/metu je boljši VEČJI rezultat, pri teku pa MANJŠI — mesto 1.
+    novi disciplini (brez seed rezultatov), da je preverba nedvoumna."""
+    us = [u for u in client.get("/pupils").json() if u["grade"] == "2.r" and u["gender"] == "M" and u.get("school_id")]
+    u0, u1 = us[0], us[1]
+    # skok (večji = 1. mesto)
+    sk = client.post("/disciplines", data={"name": "SKOK met test", "gender": "M",
+                                          "applicable_grades": "2.r"}).json()
+    r1 = client.post("/events", data={"pupil_id": u0["id"], "discipline_id": sk["id"], "time": 2.0}).json()
+    r2 = client.post("/events", data={"pupil_id": u1["id"], "discipline_id": sk["id"], "time": 5.0}).json()
+    assert r2["position"] == 1, f"skok: večji 5.0 mora biti 1. (dobil {r2['position']})"
+    def poz(ev):
+        return next(e for e in client.get("/events").json() if e["id"] == ev["id"])["position"]
+    assert poz(r1) == 2, f"skok: manjši 2.0 mora biti 2. (dobil {poz(r1)})"
+    # tek (manjši = 1. mesto)
+    te = client.post("/disciplines", data={"name": "TEK test", "gender": "M",
+                                          "applicable_grades": "2.r"}).json()
+    f1 = client.post("/events", data={"pupil_id": u0["id"], "discipline_id": te["id"], "time": 10.0}).json()
+    f2 = client.post("/events", data={"pupil_id": u1["id"], "discipline_id": te["id"], "time": 8.0}).json()
+    assert f2["position"] == 1, f"tek: manjši 8.0 mora biti 1. (dobil {f2['position']})"
+    assert poz(f1) == 2, f"tek: večji 10.0 mora biti 2. (dobil {poz(f1)})"
+
+
 def test_avtomatsko_mesto_in_tocke_po_solah(client):
     """Mesto se določi SAMODEJNO ob vpisu rezultata (uporabnik ga ne vpisuje);
     /school-points sešteje točke po šolah (1.=15, 2.=12, ..., 12.=1)."""

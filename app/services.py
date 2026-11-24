@@ -49,8 +49,17 @@ def _sync_records_after_result(db, discipline_id, grade, pupil, time):
     if not canvas:
         dodaj()
         return
-    best = min(r.time for r in canvas)
-    if time < best - 1e-9:
+    # smer "boljši": tek -> manjši; skok/met -> večji
+    from app.models import disciplina_smer, Discipline
+    _disc = db.query(Discipline).get(discipline_id)
+    _smer = disciplina_smer(_disc.name if _disc else "")
+    if _smer == "higher":
+        best = max(r.time for r in canvas)
+        boljsi = time > best + 1e-9
+    else:
+        best = min(r.time for r in canvas)
+        boljsi = time < best - 1e-9
+    if boljsi:
         for r in canvas:
             db.delete(r)
         dodaj()
@@ -84,7 +93,12 @@ def _reassign_positions_for(db, discipline_id, grade, spol=None):
     )
     if spol:
         q = q.filter(Pupil.gender == spol)
-    evts = q.order_by(CompetitionEvent.time.asc(), CompetitionEvent.id.asc()).all()
+    # smer "boljši": tek -> manjši rezultat prvi; skok/met -> večji prvi
+    from app.models import disciplina_smer, Discipline, CompetitionEvent as _CE
+    _disc = db.query(Discipline).get(discipline_id)
+    _smer = disciplina_smer(_disc.name if _disc else "")
+    _ord = CompetitionEvent.time.desc() if _smer == "higher" else CompetitionEvent.time.asc()
+    evts = q.order_by(_ord, CompetitionEvent.id.asc()).all()
     prev = None
     mesto = 0
     for idx, ev in enumerate(evts, start=1):

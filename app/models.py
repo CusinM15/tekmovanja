@@ -294,3 +294,18 @@ class StartList(Base):
 
     def __repr__(self):
         return f"<StartList {self.id}: discipline={self.discipline_id}, grade={self.grade}, date={self.event_date}>"
+
+
+def disciplina_smer(ime):
+    """Smer 'boljši' rezultat za disciplino:
+    - 'lower'  -> boljši MANJŠI rezultat (tek na progo / čas),
+    - 'higher' -> boljši VEČJI rezultat (skok, met / dolžina).
+    Prepoznamo po imenu: vsebuje 'tek' ALI oznako proge (npr. 60m/100m/400m)
+    => lower; sicer (skok/met/višina/daljina) => higher.
+    """
+    n = (ime or "").lower()
+    if "tek" in n:
+        return "lower"
+    if __import__("re").search(r'\d+\s*m\b', n):
+        return "lower"
+    return "higher"
