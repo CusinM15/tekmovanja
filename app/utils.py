@@ -790,3 +790,70 @@ def create_start_list(discipline_id: int, grade: str, event_date, pupil_ids: Lis
     
     return {"message": f"Start list created for discipline {discipline_id}, grade {grade} with {len(pupils)} pupils"}, start_list
 
+
+def razpis_pdf_bytes(title="STANKOV MEMORIAL", podnaslov="Razpis za prijavo učencev 2. in 3. razreda", sola_ime="OSNOVNA ŠOLA TONETA ČUFARJA JESENICE", kraj_datum="Jesenice, 2. 10. 2025"):
+    """Generira psevdo-razpis PDF (reportlab), ki se pripne k vabilom, dokler
+    uporabnik na strani Nastavitve ne naloži lastnega PDF razpisa.
+
+    Vrne bytes PDF-ja, ki ga lahko pošljemo kot prilogo (filename='razpis.pdf')."""
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            topMargin=2 * cm, bottomMargin=2 * cm,
+                            leftMargin=2 * cm, rightMargin=2 * cm)
+    font = _reg_fonts()
+    styles = getSampleStyleSheet()
+    styles["Title"].fontName = font
+    styles["Heading2"].fontName = font
+    styles["Normal"].fontName = font
+
+    def _st(tekst, name="Normal", **kw):
+        st = ParagraphStyle(name, fontName=font, fontSize=kw.get("fontSize", 11),
+                            leading=kw.get("leading", 15),
+                            alignment=kw.get("alignment", 0),
+                            spaceAfter=kw.get("spaceAfter", 8))
+        return Paragraph(tekst, st)
+
+    elems = []
+    # glava: ime šole (bela na temno modri) + naslov razpisa
+    head = Paragraph(sola_ime.upper(),
+                     ParagraphStyle("hd", fontName=font, fontSize=13, leading=16,
+                                    textColor=colors.white, alignment=1,
+                                    backColor=colors.HexColor("#1F3864")))
+    from reportlab.platypus import Table, TableStyle as _TS
+    t = Table([[head]], colWidths=[A4[0] - 4 * cm])
+    t.setStyle(_TS([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1F3864")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
+    elems.append(t)
+    elems.append(Spacer(1, 0.6 * cm))
+    elems.append(_st(title, "t1", fontSize=24, leading=28, alignment=1, spaceAfter=6))
+    elems.append(_st(podnaslov, "t2", fontSize=14, leading=20, alignment=1, spaceAfter=8, ))
+    elems.append(_st(kraj_datum or "", "kd", fontSize=12, leading=16, alignment=1, spaceAfter=14))
+    elems.append(Spacer(1, 0.4 * cm))
+    besedilo = (
+        "Spoštovani ravnatelj in organizatorji športa,\n\n"
+        "vabimo vas, da prijavite svoje učence 2. in 3. razreda na šolsko atletsko "
+        "tekmovanje. Tekmuje se v štirih disciplinah:\n\n"
+        "• tek 60 m\n"
+        "• tek 400 m\n"
+        "• skok v daljino\n"
+        "• met vorteksa\n\n"
+        "Učenci se prijavijo v kategoriji po razredu (2. oz. 3. razred) in spolu. "
+        "Rok ter podrobnejša navodila najdete v priloženem vabilu in na strani "
+        "tekmovanja.\n\n"
+        "Prosimo, da prijave izpolnite v priloženi predlogi in nam jo vrnete do "
+        "navedenega roka.\n\n"
+        "Lep pozdrav,\n"
+        + (sola_ime or "Organizator tekmovanja")
+    )
+    elems.append(_st(besedilo))
+    doc.build(elems)
+    return buf.getvalue()
+

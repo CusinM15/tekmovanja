@@ -19,6 +19,7 @@ _DEFAULTS = {
     "kraj_datum": "Jesenice, 2. 10. 2025",
     "logo": "ostcj_logo.png",      # relativno na static/
     "slika": "ostcj_slika.jpeg",
+    "razpis": None,                # PDF razpisa, relativno na static/ (None = ni naložen)
 }
 
 

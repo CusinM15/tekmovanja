@@ -776,12 +776,35 @@ def send_invitations_emails(db=Depends(get_db)):
     legenda += "\n"
     csv_content = _csv_template()
 
+    # PDF razpisa: uporabnikov (naložen na Nastavitvah) ali, če ga ni, psevdo-razpis.
+    from app import nastavitve as _nst
+    razpis_priloga = None  # (filename, bytes, mimetype)
+    _raz = _nst.get().get("razpis")
+    if _raz and _nst.abs_path(_raz).exists():
+        try:
+            razpis_priloga = ("razpis.pdf", _nst.abs_path(_raz).read_bytes(), "application/pdf")
+        except OSError:
+            razpis_priloga = None
+    if not razpis_priloga:
+        from app.utils import razpis_pdf_bytes
+        ns = _nst.get()
+        razpis_priloga = ("razpis.pdf",
+                          razpis_pdf_bytes(title=ns.get("tekmovanje_title", "STANKOV MEMORIAL"),
+                                           sola_ime=ns.get("ime_sole", "OSNOVNA ŠOLA TONETA ČUFARJA JESENICE"),
+                                           kraj_datum=ns.get("kraj_datum", "")),
+                          "application/pdf")
+
+    atts = [("prijava_ucencev.csv", csv_content, "text/csv")]
+    if razpis_priloga:
+        atts.append(razpis_priloga)
+
     # Build message
     body = ("Pozdravljeni,\n\n"
             "vabimo vas k prijavi učencev na Stankov memorial.\n\n"
             "Izpolnite priloženo CSV datoteko (prenesite jo in odprite v Excelu) in nam "
             "vrnite izpolnjen CSV s podatki vseh učencev vaše šole. "
-            "Na vrhu datoteke so navodila za izpolnjevanje.\n\n"
+            "Na vrhu datoteke so navodila za izpolnjevanje. "
+            "V prilogi je tudi razpis tekmovanja. \n\n"
             "Hvala in lep pozdrav,\n" + _posiljatelj_ime())
 
     try:
@@ -790,7 +813,7 @@ def send_invitations_emails(db=Depends(get_db)):
             sender=sender,
             recipients=recipients,
             body=body,
-            attachments=[("prijava_ucencev.csv", csv_content, "text/csv")],
+            attachments=atts,
         )
     except Exception as e:
         print(f"send-emails napaka: {e}")
@@ -1458,6 +1481,7 @@ def get_nastavitve():
     from app import nastavitve
     d = nastavitve.get()
     n_l = d["logo"]; n_s = d["slika"]
+    _raz = d.get("razpis")
     return {
         "ime_sole": d.get("ime_sole", ""),
         "tekmovanje_title": d["tekmovanje_title"],
@@ -1465,6 +1489,9 @@ def get_nastavitve():
         "kraj_datum": d.get("kraj_datum", ""),
         "logo": n_l,
         "slika": n_s,
+        "razpis": _raz,
+        "razpis_url": f"/static/{_raz}" if (_raz and (nastavitve.abs_path(_raz)).exists()) else None,
+        "razpis_obstaja": bool(_raz and (nastavitve.abs_path(_raz)).exists()),
         "logo_url": f"/static/{n_l}" if (nastavitve.abs_path(n_l)).exists() else None,
         "slika_url": f"/static/{n_s}" if (nastavitve.abs_path(n_s)).exists() else None,
     }
@@ -1478,8 +1505,9 @@ async def save_nastavitve(
     kraj_datum: str = Form(""),
     logo: Optional[UploadFile] = File(None),
     slika: Optional[UploadFile] = File(None),
+    razpis: Optional[UploadFile] = File(None),
 ):
-    """Shrani imeni + (opcijsko) naložena logotip/slika."""
+    """Shrani imeni + (opcijsko) naložena logotip/slika/razpis (PDF)."""
     from app import nastavitve
     from app.database import get_session
     pod = {k: v.strip() for k, v in [("ime_sole", ime_sole),
@@ -1491,7 +1519,7 @@ async def save_nastavitve(
     (_nst.abs_path("uploads")).mkdir(parents=True, exist_ok=True)
     # shrani naložene slike
     import uuid, re as _re
-    for key, up in (("logo", logo), ("slika", slika)):
+    for key, up in (("logo", logo), ("slika", slika), ("razpis", razpis)):
         if up is None:
             continue
         data = await up.read()
