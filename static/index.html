@@ -928,8 +928,10 @@ function izrisiKarticeRezultati(disc, ucenci){
       else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
     }
     var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+    // ime brez morebitne prej obstoječe ikone + ENO ♂ (da ne pride do "♂ ♂")
+    var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').trim() + ' ♂';
     kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',' + "'M'" + ')">' +
-      '<div class="ime">' + esc(d.name) + ' ♂</div>' +
+      '<div class="ime">' + esc(imeK) + '</div>' +
       '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
       '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
   }
@@ -958,7 +960,8 @@ function prikaziRezultateDiscipline(id, spolFil){
     opcije += '<option value="' + dd.id + '"' + (dd.id === id ? ' selected' : '') + '>' + esc(dd.name) + '</option>';
   }
   $('rz-detail-izbira').innerHTML = opcije;
-  $('rz-detail-naslov').textContent = dsc.name + (spolFil ? ' ' + (spolFil === 'M' ? '♂' : '♀') : '');
+  $('rz-detail-naslov').textContent = String(dsc.name || '').replace(/[♂♀][\s]*$/g, '').trim() +
+    (spolFil ? ' ' + (spolFil === 'M' ? '♂' : '♀') : '');
   $('rz-detail-pdf').href = '/results-pdf?discipline_id=' + id;
   var discSpol = (dsc.gender || '').toUpperCase();
 
