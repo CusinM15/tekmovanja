@@ -403,15 +403,11 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     elems = []
     elems += _sliki_flow(logo_path, slika_path)
     elems.append(Paragraph(title, styles["Title"]))
-    if subtitle:
-        elems.append(Spacer(1, 0.15 * cm))
-        elems.append(Paragraph(subtitle, styles["Heading2"]))
-    elems.append(Spacer(1, 0.3 * cm))
-    if kraj_datum:
-        elems.append(Paragraph(kraj_datum, styles["Normal"]))
-    elems.append(Spacer(1, 0.4 * cm))
-    # PRVA STRAN = samo glava (logotip + naslov + podnaslov + kraj/datum),
-    # vse ostalo (šole, pregled skupin, rezultati) se začne na 2. strani.
+    # PRVA STRAN = SAMO logotip/slika + ime tekmovanja in ime za rekorde
+    # (brez podnaslova, kraja/datumu itd.); vse ostalo se začne na 2. strani.
+    elems.append(Spacer(1, 0.25 * cm))
+    elems.append(Paragraph(rekordi_title, styles["Heading2"]))
+    elems.append(Spacer(1, 0.5 * cm))
     elems.append(PageBreak())
 
     # Seznam šol
