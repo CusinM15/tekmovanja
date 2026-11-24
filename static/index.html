@@ -914,26 +914,30 @@ function izrisiKarticeRezultati(disc, ucenci){
     var deli = (d.applicable_grades || '').split(',');
     var veljavni = {};
     for (var ri = 0; ri < deli.length; ri++) veljavni[deli[ri].trim()] = true;
-    // ENA kartica na disciplino, ENA ikona (fantje ♂) — nevtralni šport se NE deli.
-    // Klik odpre detail SAMO za fantje (M), zato števila štejemo za fantje.
-    var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', 'M') : 0;
-    var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', 'M') : 0;
-    var zRez2 = {}, zRez3 = {};
-    for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
-      var e = REZULTATI_DOGODKI[j];
-      if (e.discipline_id !== d.id) continue;
-      var pu = ucm[e.pupil_id];
-      if (pu && (pu.gender || '').toUpperCase() !== 'M') continue;
-      if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
-      else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
+    // vsaka disciplina X spol -> EN kartice, ENA ikona (fantje ♂ / dekleta ♀)
+    var spoli = (d.gender === 'M' || d.gender === 'Ž') ? [d.gender] : ['M', 'Ž'];
+    for (var si = 0; si < spoli.length; si++){
+      var sp = spoli[si];
+      var ik = (sp === 'M') ? '♂' : '♀';
+      var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', sp) : 0;
+      var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', sp) : 0;
+      var zRez2 = {}, zRez3 = {};
+      for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+        var e = REZULTATI_DOGODKI[j];
+        if (e.discipline_id !== d.id) continue;
+        var pu = ucm[e.pupil_id];
+        if (pu && (pu.gender || '').toUpperCase() !== sp) continue;
+        if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
+        else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
+      }
+      var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+      // ENO ikono — iz d.name odstranimo morebitno že vnešeno, dodamo natanko eno
+      var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').trim() + ' ' + ik;
+      kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',' + "'" + sp + "'" + ')">' +
+        '<div class="ime">' + esc(imeK) + '</div>' +
+        '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
+        '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
     }
-    var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
-    // ime brez morebitne prej obstoječe ikone + ENO ♂ (da ne pride do "♂ ♂")
-    var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').trim() + ' ♂';
-    kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',' + "'M'" + ')">' +
-      '<div class="ime">' + esc(imeK) + '</div>' +
-      '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
-      '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
   }
   $('rz-kartice').innerHTML = kartice;
   $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
@@ -953,11 +957,20 @@ function prikaziRezultateDiscipline(id, spolFil){
   var dsc = null;
   for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === id) dsc = VSE_DISCIPLINE[i];
   if (!dsc) return;
-  // Spustni seznam za neposreden preklop na drugo disciplino (brez vračanja nazaj).
+  // Spustni seznam za neposreden preklop na drugo disciplino (incl. spol);
+  // črpa iz VSE_DISCIPLINE (= iz sqlite prek /disciplines).
   var opcije = '';
+  var trenutniSpol = spolFil || (dsc.gender === 'M' || dsc.gender === 'Ž' ? dsc.gender : 'M');
   for (var di = 0; di < VSE_DISCIPLINE.length; di++){
     var dd = VSE_DISCIPLINE[di];
-    opcije += '<option value="' + dd.id + '"' + (dd.id === id ? ' selected' : '') + '>' + esc(dd.name) + '</option>';
+    var spoliDd = (dd.gender === 'M' || dd.gender === 'Ž') ? [dd.gender] : ['M', 'Ž'];
+    for (var si2 = 0; si2 < spoliDd.length; si2++){
+      var spin = spoliDd[si2];
+      var ikDd = (spin === 'M') ? '♂' : '♀';
+      var imeDd = String(dd.name || '').replace(/[♂♀][\s]*$/g, '').trim() + ' ' + ikDd;
+      var sel = (dd.id === id && spin === trenutniSpol) ? ' selected' : '';
+      opcije += '<option value="' + dd.id + '" data-spol="' + spin + '"' + sel + '>' + esc(imeDd) + '</option>';
+    }
   }
   $('rz-detail-izbira').innerHTML = opcije;
   $('rz-detail-naslov').textContent = String(dsc.name || '').replace(/[♂♀][\s]*$/g, '').trim() +
@@ -1049,7 +1062,12 @@ function nazajRezultati(){
 function preklopiRezultatDisciplino(v){
   var id = parseInt(v, 10);
   if (isNaN(id)) return;
-  prikaziRezultateDiscipline(id);
+  // prevzemi spol iz DEJANSKO izbranega optiona (selectedOptions) — ne iz value,
+  // ker ima ista disciplina pri fantjih/dekletih iza value (id).
+  var sel = document.getElementById('rz-detail-izbira');
+  var opt = sel && sel.selectedOptions && sel.selectedOptions.length ? sel.selectedOptions[0] : null;
+  var sp = opt ? opt.getAttribute('data-spol') : 'M';
+  prikaziRezultateDiscipline(id, sp);
 }
 
 function odpriModalRezultat(id, predDisciplina, predUcenec){
