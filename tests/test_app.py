@@ -390,10 +390,10 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
 
 
 def test_enota_za_disciplino():
-    """Enota rezultata je odvisna od discipline: skok v daljino → cm,
-    met vorteksa → m, tek → s."""
+    """Enota rezultata je odvisna od discipline: skok v daljino in met vorteksa → cm,
+    tek → s."""
     from app.utils import enota_za_disciplino
-    assert enota_za_disciplino("met vorteksa ♂") == "m"
+    assert enota_za_disciplino("met vorteksa ♂") == "cm"
     assert enota_za_disciplino("skok v daljino ♀") == "cm"
     assert enota_za_disciplino("tek 60m ♂") == "s"
     assert enota_za_disciplino("") == "s"

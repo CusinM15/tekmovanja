@@ -325,10 +325,10 @@ function esc(s){
 }
 
 function enotaZaDisciplino(ime){
-  // skok v daljino → cm, met vorteksa → m, vse ostalo → s
-  var n = String(ime || '').replace(/[♂♀]/g, '').toLowerCase();
+  // skok v daljino in met vorteksa → cm, vse ostalo → s
+  var n = (ime || '').replace('♂','').replace('♀','').toLowerCase();
   if (n.indexOf('skok v daljino') !== -1) return 'cm';
-  if (n.indexOf('vorteksa') !== -1) return 'm';
+  if (n.indexOf('vorteksa') !== -1) return 'cm';
   return 's';
 }
 

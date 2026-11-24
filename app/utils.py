@@ -13,12 +13,10 @@ DB = None
 
 
 def enota_za_disciplino(ime):
-    """Enota rezultata glede na disciplino: skok v daljino → cm, met vorteksa → m, drugo → s."""
+    """Enota rezultata glede na disciplino: skok v daljino in met vorteksa → cm, drugo → s."""
     n = (ime or "").replace("♂", "").replace("♀", "").lower()
-    if "skok v daljino" in n:
+    if "skok v daljino" in n or "vorteksa" in n:
         return "cm"
-    if "vorteksa" in n:
-        return "m"
     return "s"
 
 
