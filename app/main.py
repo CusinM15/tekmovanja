@@ -208,7 +208,9 @@ def _seed_defaults():
             db.commit()
 
             # Rekordi: za VSAKO disciplino × spol × razred (16 skupin)
+            from app.models import disciplina_smer
             for disc_ime, disc_id in disc.items():
+                _smer = disciplina_smer(disc_ime)
                 for spol in ("M", "Ž"):
                     for razred in ("2.r", "3.r"):
                         evts = db.query(CompetitionEvent).filter(
@@ -218,7 +220,10 @@ def _seed_defaults():
                         for e in evts:
                             pp = db.query(Pupil).get(e.pupil_id)
                             if pp and pp.grade == razred and pp.gender == spol:
-                                if best is None or e.time < best.time:
+                                if best is None:
+                                    best = e
+                                elif (_smer == "higher" and e.time > best.time) or \
+                                     (_smer == "lower" and e.time < best.time):
                                     best = e
                         if best:
                             db.add(Record(discipline_id=disc_id, pupil_id=best.pupil_id,
