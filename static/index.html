@@ -282,6 +282,7 @@
   <section class="stran" id="stran-nastavitve">
     <h2>⚙️ Nastavitve tekmovanja</h2>
     <p class="opis">Imeni in slake, prikazani na prvi strani rezultatov (gumb »Pošlji rezultate šolam«) in v PDF rekordov.</p>
+    <div class="polje"><label>Ime šole (organizator, v glavi štartnih list)</label><input id="f-n-sola" placeholder="npr. OŠ Toneta Čufarja Jesenice"></div>
     <div class="polje"><label>Naslov tekmovanja</label><input id="f-n-tekmovanje" placeholder="npr. STANKOV MEMORIAL"></div>
     <div class="polje"><label>Naslov za rekorde</label><input id="f-n-rekordi" placeholder="npr. SUPER STANKO"></div>
     <div class="polje"><label>Kraj in datum tekmovanja</label><input id="f-n-kraj" placeholder="npr. Jesenice, 2. 10. 2025"></div>
@@ -385,6 +386,7 @@ function preklopiTab(ime){
 
 function natovoriNastavitve(){
   api('/api/nastavitve').then(function(s){
+    $('f-n-sola').value = s.ime_sole || '';
     $('f-n-tekmovanje').value = s.tekmovanje_title || '';
     $('f-n-rekordi').value = s.rekordi_title || '';
     $('f-n-kraj').value = s.kraj_datum || '';
@@ -398,6 +400,7 @@ function natovoriNastavitve(){
 
 function shraniNastavitve(){
   var fd = new FormData();
+  fd.append('ime_sole', ($('f-n-sola').value || '').trim());
   fd.append('tekmovanje_title', ($('f-n-tekmovanje').value || '').trim());
   fd.append('rekordi_title', ($('f-n-rekordi').value || '').trim());
   fd.append('kraj_datum', ($('f-n-kraj').value || '').trim());

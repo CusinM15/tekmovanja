@@ -13,6 +13,7 @@ _UPLOAD = _DIR / "uploads"
 _FILE = _DIR / "nastavitve.json"
 
 _DEFAULTS = {
+    "ime_sole": "OŠ Toneta Čufarja Jesenice",   # šola, ki organizira (v glavi PDF-ov)
     "tekmovanje_title": "STANKOV MEMORIAL",
     "rekordi_title": "SUPER STANKO",
     "kraj_datum": "Jesenice, 2. 10. 2025",

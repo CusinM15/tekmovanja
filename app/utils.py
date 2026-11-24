@@ -593,13 +593,23 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     return buf.getvalue()
 
 
-def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
-    """Pravi PDF s štartno listo."""
+def start_list_pdf_bytes(start_list, pupils, discipline_name, grade,
+                         ime_sole="", tekmovanje_title="Tekmovanje v atletiki",
+                         logo_path=None, slika_path=None):
+    """Pravi PDF s štartno listo.
+
+    Glava: (1) ime šole + logotip na vrhu, (2) nato druga slika (malo večja),
+    (3) pod njo naslov tekmovanja, (4) tabela štartne liste,
+    na samem dnu pa datum pošiljanja.
+    """
+    import os
     from io import BytesIO
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import Image as RLImage
+    from reportlab.lib.utils import ImageReader
     from reportlab.lib.styles import getSampleStyleSheet
     from datetime import datetime
 
@@ -611,25 +621,71 @@ def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
         styles[s].fontName = font
 
     elems = []
-    elems.append(Paragraph(f"Štartna lista — {discipline_name}", styles["Title"]))
-    elems.append(Spacer(1, 0.3 * cm))
-    elems.append(Paragraph(f"Razred: {grade} &nbsp; | &nbsp; Datum: {start_list.event_date.strftime('%d.%m.%Y') if start_list.event_date else '—'}", styles["Normal"]))
-    elems.append(Spacer(1, 0.5 * cm))
 
-    data = [["#", "Učenec", "Razred", "Šola", "Rezultat"]]
+    # ── GLAVA: šola (ime) + logotip ───────────────────────────────
+    if ime_sole:
+        elems.append(Paragraph(ime_sole, styles["Title"]))
+        elems.append(Spacer(1, 0.15 * cm))
+
+    def _img(path, max_w, max_h=4.5 * cm):
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            ir = ImageReader(path)
+            iw, ih = ir.getSize()
+            if iw <= 0 or ih <= 0:
+                return None
+            scl = min(max_w / iw, max_h / ih)
+            return RLImage(path, width=iw * scl, height=ih * scl)
+        except Exception:
+            return None
+
+    l = _img(logo_path, 4 * cm, 3 * cm)
+    if l is not None:
+        t_logo = Table([[l]], colWidths=[4 * cm], hAlign="CENTER")
+        t_logo.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        elems.append(t_logo)
+        elems.append(Spacer(1, 0.3 * cm))
+
+    # druga slika — malo večja od logotipa (naslovna fotografija)
+    s_img = _img(slika_path, 6.5 * cm, 5 * cm)
+    if s_img is not None:
+        t_slika = Table([[s_img]], colWidths=[6.5 * cm], hAlign="CENTER")
+        t_slika.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        elems.append(t_slika)
+        elems.append(Spacer(1, 0.3 * cm))
+
+    # naslov tekmovanja pod slikami
+    elems.append(Paragraph(tekmovanje_title, styles["Heading2"]))
+    elems.append(Spacer(1, 0.4 * cm))
+
+    # disciplina / razred
+    elems.append(Paragraph(f"{discipline_name} — {grade} razred", styles["Title"]))
+    elems.append(Spacer(1, 0.3 * cm))
+
+    data = [[_cell_par("#", font, size=10),
+             _cell_par("Učenec", font, size=10),
+             _cell_par("Razred", font, size=10),
+             _cell_par("Šola", font, size=10),
+             _cell_par("Rezultat", font, size=10)]]
     for i, pupil in enumerate(pupils, start=1):
         data.append([
-            _cell_par(str(i), font),
-            _cell_par(f"{pupil.first_name} {pupil.last_name}", font),
-            _cell_par(pupil.grade or "", font),
+            _cell_par(str(i), font, size=10),
+            _cell_par(f"{pupil.first_name} {pupil.last_name}", font, size=10),
+            _cell_par(pupil.grade or "", font, size=10),
             # Šola razširjena + Paragraph: "OŠ Josipa Vandota Kranjska Gora" se
             # zlomi znotraj celice in ne prelije čez rob.
-            _cell_par(pupil.school.name if pupil.school else "", font),
-            _cell_par("", font),  # prostor za vpis rezultata
+            _cell_par(pupil.school.name if pupil.school else "", font, size=10),
+            _cell_par("", font, size=10),  # prostor za vpis rezultata
         ])
     if len(data) == 1:
-        data.append([_cell_par("1", font), _cell_par("Ni učencev na listi.", font),
-                     _cell_par("", font), _cell_par("", font), _cell_par("", font)])
+        data.append([_cell_par("1", font, size=10),
+                     _cell_par("Ni učencev na listi.", font, size=10),
+                     _cell_par("", font, size=10),
+                     _cell_par("", font, size=10),
+                     _cell_par("", font, size=10)])
 
     t = Table(data, repeatRows=1, colWidths=[1.0 * cm, 5.0 * cm, 1.6 * cm, 6.4 * cm, 3.0 * cm])
     t.setStyle(TableStyle([
@@ -642,6 +698,12 @@ def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     elems.append(t)
+
+    # ── čisto spodaj: datum pošiljanja ─────────────────────────────
+    elems.append(Spacer(1, 0.8 * cm))
+    elems.append(Paragraph(f"Datum pošiljanja: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                           styles["Normal"]))
+
     doc.build(elems)
     return buf.getvalue()
 

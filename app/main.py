@@ -1455,6 +1455,7 @@ def get_nastavitve():
     d = nastavitve.get()
     n_l = d["logo"]; n_s = d["slika"]
     return {
+        "ime_sole": d.get("ime_sole", ""),
         "tekmovanje_title": d["tekmovanje_title"],
         "rekordi_title": d["rekordi_title"],
         "kraj_datum": d.get("kraj_datum", ""),
@@ -1467,6 +1468,7 @@ def get_nastavitve():
 
 @app.post("/api/nastavitve", response_model=dict, summary="Shrani nastavitve tekmovanja")
 async def save_nastavitve(
+    ime_sole: str = Form(""),
     tekmovanje_title: str = Form(""),
     rekordi_title: str = Form(""),
     kraj_datum: str = Form(""),
@@ -1476,7 +1478,8 @@ async def save_nastavitve(
     """Shrani imeni + (opcijsko) naložena logotip/slika."""
     from app import nastavitve
     from app.database import get_session
-    pod = {k: v.strip() for k, v in [("tekmovanje_title", tekmovanje_title),
+    pod = {k: v.strip() for k, v in [("ime_sole", ime_sole),
+                                     ("tekmovanje_title", tekmovanje_title),
                                      ("rekordi_title", rekordi_title),
                                      ("kraj_datum", kraj_datum)] if v and v.strip()}
     # mapa za naložene slike MORA obstajati PRED pisanjem (na svežem checkoutu ni v gitu)
@@ -1564,7 +1567,16 @@ def start_list_pdf(start_list_id: int, db=Depends(get_db)):
     if not start_list:
         raise HTTPException(status_code=404, detail="Start list not found")
     discipline_name = start_list.discipline.name if start_list.discipline else "—"
-    pdf = start_list_pdf_bytes(start_list, start_list.pupils, discipline_name, start_list.grade)
+    from app import nastavitve as _nst
+    _s = _nst.get()
+    _logo = str(_nst.abs_path(_s["logo"])) if _nst.abs_path(_s["logo"]).exists() else None
+    _slika = str(_nst.abs_path(_s["slika"])) if _nst.abs_path(_s["slika"]).exists() else None
+    pdf = start_list_pdf_bytes(
+        start_list, start_list.pupils, discipline_name, start_list.grade,
+        ime_sole=_s.get("ime_sole", ""),
+        tekmovanje_title=_s.get("tekmovanje_title", "Tekmovanje v atletiki"),
+        logo_path=_logo, slika_path=_slika,
+    )
     filename = f"startna_lista_{start_list_id}.pdf"
     return Response(
         content=pdf,
