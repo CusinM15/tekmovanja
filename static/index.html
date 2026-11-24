@@ -969,7 +969,10 @@ function prikaziRezultateDiscipline(id){
       for (var p = 0; p < ucenci.length; p++){
         var u = ucenci[p];
         if ((u.grade || '') !== raz) continue;
-        if ((u.gender || '').toUpperCase() !== discSpol) continue;
+        // filtriramo po SPOLU SKUPINE (M/Ž), ne po spolu discipline —
+        // pri nevtralnih športih (npr. tek 60m) je discipline.gender='' in bi
+        // diskSpol='' izpustil VSE učence (skupine bi bile prazne).
+        if ((u.gender || '').toUpperCase() !== spol) continue;
         izbrani.push(u);
       }
       var vrstice = '', st = 0;
