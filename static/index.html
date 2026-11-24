@@ -921,7 +921,7 @@ function izrisiKarticeRezultati(disc, ucenci){
     }
     var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
     kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
-      '<div class="ime">' + esc(d.name) + '</div>' +
+      '<div class="ime">' + esc(d.name) + ' ♂</div>' +
       '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
       '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
   }
@@ -929,6 +929,13 @@ function izrisiKarticeRezultati(disc, ucenci){
   $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
   // Če je odprt podpogled discipline, ga po osvežitvi obdrži
   if (REZULTATI_AKTIVNA) prikaziRezultateDiscipline(REZULTATI_AKTIVNA);
+}
+
+function tockeZaMesto(p){
+  // Točke po mestu: 1.=15, 2.=12, 3.=10, 4.=9, 5.=8, 6.=7, 7.=6, 8.=5, 9.=4, 10.=3, 11.=2, 12.=1, 13+=0.
+  if (!p || p < 1) return 0;
+  if (p <= 12) return [0, 15, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1][p];
+  return 0;
 }
 
 function prikaziRezultateDiscipline(id){
@@ -999,6 +1006,7 @@ function prikaziRezultateDiscipline(id){
           '<td>' + esc(u.school_name || '') + '</td>' +
           '<td><strong>' + (e ? casLepo(e.time, dsc.name) : '—') + '</strong></td>' +
           '<td>' + (e && e.position != null ? e.position + '.' : '—') + '</td>' +
+          '<td><strong>' + (e && e.position != null ? tockeZaMesto(e.position) : '—') + '</strong></td>' +
           '<td>' + (e ? esc(e.notes || '') : '—') + '</td>' +
           '<td style="text-align:right;white-space:nowrap">' + akcija + '</td></tr>';
       }
@@ -1006,7 +1014,7 @@ function prikaziRezultateDiscipline(id){
       html += '<h3 style="margin:18px 0 4px">' + esc(naslov) + ' ' + spolIkona +
               ' <small style="font-weight:400;color:#7f8c8d">(' + st + (st === 1 ? ' učenec' : ' učencev') + ')</small></h3>';
       if (st){
-        html += '<table class="sortable"><thead><tr><th>Učenec</th><th>Šola</th><th>Čas / dolžina</th><th>Mesto</th><th>Opombe</th><th></th></tr></thead><tbody>' +
+        html += '<table class="sortable"><thead><tr><th>Učenec</th><th>Šola</th><th>Čas / dolžina</th><th>Mesto</th><th>Točke</th><th>Opombe</th><th></th></tr></thead><tbody>' +
                 vrstice + '</tbody></table>';
       } else {
         html += '<div class="prazno">V tej skupini ni učencev.</div>';
