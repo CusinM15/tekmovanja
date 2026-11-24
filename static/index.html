@@ -920,8 +920,12 @@ function izrisiKarticeRezultati(disc, ucenci){
       else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
     }
     var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+    // ikono fantje (♂) dodamo SAMO disciplini 'tek 60m' (tista je bila brez ikone);
+    // pri ostalih (tek 400m, skok, met) ikone ne prikazujemo.
+    var ime_kart = d.name;
+    if (String(d.name).toLowerCase().indexOf('tek 60m') === 0) ime_kart = d.name + ' ♂';
     kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
-      '<div class="ime">' + esc(d.name) + ' ♂</div>' +
+      '<div class="ime">' + esc(ime_kart) + '</div>' +
       '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
       '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
   }
