@@ -404,6 +404,23 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         cz.alignment = 1  # center
         return Paragraph(tekst, cz)
 
+    import os as _os
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import Image as RLImage
+
+    def _im(path, max_w, max_h):
+        if not path or not _os.path.exists(path):
+            return None
+        try:
+            ir = ImageReader(path)
+            iw, ih = ir.getSize()
+            if iw <= 0 or ih <= 0:
+                return None
+            sc = min(max_w / iw, max_h / ih)
+            return RLImage(path, width=iw * sc, height=ih * sc)
+        except Exception:
+            return None
+
     def spol_ime(s):
         return "fantje" if s == "M" else "dekleta"
 
@@ -425,17 +442,45 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
 
     elems = []
 
-    # ── 1. UVODNA STRAN (po Rezultati 2025.docx) ────────────────────
-    elems += _sliki_flow(logo_path, slika_path)
-    elems.append(_center(sola_ime, styles["Title"]))
-    elems.append(Spacer(1, 0.6 * cm))
-    elems.append(_center(title, styles["Title"]))          # STANKOV MEMORIAL
+    # ── 1. UVODNA STRAN (natanko po Rezultati 2025.docx) ─────────────
+    # zgornji pas: šolski grb (levo) + ime šole v temno modri (desno)
+    logo_img = _im(logo_path, 3.2 * cm, 4.6 * cm)
+    ime_sola = Paragraph(sola_ime.rstrip(),
+                         ParagraphStyle("cov_sola", fontName=font, fontSize=18.5,
+                                        leading=22, textColor=colors.HexColor("#1F3864"),
+                                        alignment=0))
+    nav = Table([[logo_img if logo_img else "", ime_sola]],
+                colWidths=[4.0 * cm, 10.5 * cm], hAlign="CENTER")
+    nav.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, 0), "RIGHT"),
+        ("ALIGN", (1, 0), (1, 0), "LEFT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elems.append(nav)
+    elems.append(Spacer(1, 1.0 * cm))
+    # velik naslov na sredini
+    elems.append(Paragraph(title,
+        ParagraphStyle("cov_t", fontName=font, fontSize=46, leading=52,
+                       textColor=colors.black, alignment=1,
+                       spaceAfter=6)))
+    # fotografija na sredini
+    foto = _im(slika_path, 10.0 * cm, 9.0 * cm)
+    if foto:
+        elems.append(Spacer(1, 0.5 * cm))
+        elems.append(foto)
+    # podnaslov + kraj/datum na sredini
     if subtitle:
-        elems.append(Spacer(1, 0.15 * cm))
-        elems.append(_center(subtitle, styles["Heading2"]))
+        elems.append(Spacer(1, 0.6 * cm))
+        elems.append(Paragraph(subtitle,
+            ParagraphStyle("cov_s", fontName=font, fontSize=22, leading=26,
+                           textColor=colors.HexColor("#262626"), alignment=1)))
     if kraj_datum:
         elems.append(Spacer(1, 0.2 * cm))
-        elems.append(_center(kraj_datum, styles["Heading2"]))
+        elems.append(Paragraph(kraj_datum,
+            ParagraphStyle("cov_d", fontName=font, fontSize=20, leading=24,
+                           textColor=colors.HexColor("#262626"), alignment=1)))
     elems.append(PageBreak())
 
     # ── 2. REZULTATI PO ŠOLAH (po točkah) ───────────────────────────

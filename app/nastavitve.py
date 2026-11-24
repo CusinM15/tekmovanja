@@ -18,7 +18,7 @@ _DEFAULTS = {
     "rekordi_title": "SUPER STANKO",
     "kraj_datum": "Jesenice, 2. 10. 2025",
     "logo": "ostcj_logo.png",      # relativno na static/
-    "slika": "ostcj_slika.png",
+    "slika": "ostcj_slika.jpeg",
 }
 
 
