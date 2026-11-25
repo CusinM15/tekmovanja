@@ -1428,14 +1428,35 @@ function prenesiPredlogaRekordiCsv(){
 
 function odpriModalUvozRekordovCsv(){
   $('modal-vsebina').innerHTML =
-    '<h3>📥 Uvozi rekorde iz CSV</h3>' +
-    '<div class="info">Izberite CSV datoteko z rekordi. Stolpci (ločeni z vejico ,): Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat. Rezultat z decimalno PIKO (npr. 10.47). Najprej lahko prenesete predlogo.</div>' +
-    '<div class="polje"><label>CSV datoteka</label><input id="f-csv-rekordi" type="file" accept=".csv,text/csv"></div>' +
+    '<h3>📥 Uvozi rekorde</h3>' +
+    '<div class="info">Stolpci (ločeni z vejico ,): Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat. Rezultat z decimalno PIKO (npr. 10.47). Vsako vrstico vpiši v svojo vrsto.</div>' +
+    '<div class="polje"><label>A) Vnos / prilepi vrstice neposredno</label>' +
+      '<textarea id="f-rekordi-text" rows="6" style="width:100%;font-family:monospace;font-size:13px">Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat\n</textarea></div>' +
+    '<div class="polje"><label>B) Ali izberi CSV datoteko</label><input id="f-csv-rekordi" type="file" accept=".csv,text/csv"></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-      '<button class="gumb gumb-zelen" onclick="uvoziRekordeCsv()">Uvozi</button>' +
+      '<button class="gumb gumb-zelen" onclick="uvoziRekordeIzTeksta()">📝 Uvozi iz besedila</button>' +
+      '<button class="gumb gumb-moder" onclick="uvoziRekordeCsv()">📄 Uvozi iz datoteke</button>' +
     '</div>';
   odpriModal();
+}
+
+function obdelajUvozRekordov(r){
+  var besedilo = r.message || '';
+  if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
+  toast(besedilo, r.ok === false ? 'napaka' : 'ok');
+  zapriModal();
+  natovoriRekorde(); natovoriPregled();
+}
+
+function uvoziRekordeIzTeksta(){
+  var t = $('f-rekordi-text');
+  var vsebina = t ? t.value : '';
+  if (!vsebina.trim()){ toast('Vpišite ali prilepite vrstice.', 'napaka'); return; }
+  var fd = new FormData();
+  fd.append('file', new Blob([vsebina], { type: 'text/csv' }), 'rekordi_direktno.csv');
+  api('/records/csv-import', 'POST', fd).then(obdelajUvozRekordov)
+    .catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }
 
 function uvoziRekordeCsv(){
@@ -1443,13 +1464,8 @@ function uvoziRekordeCsv(){
   if (!input.files || !input.files[0]){ toast('Izberite CSV datoteko.', 'napaka'); return; }
   var fd = new FormData();
   fd.append('file', input.files[0]);
-  api('/records/csv-import', 'POST', fd).then(function(r){
-    var besedilo = r.message || '';
-    if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
-    toast(besedilo, r.ok === false ? 'napaka' : 'ok');
-    zapriModal();
-    natovoriRekorde(); natovoriPregled();
-  }).catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
+  api('/records/csv-import', 'POST', fd).then(obdelajUvozRekordov)
+    .catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }
 
 /* ================= MODAL ================= */
