@@ -943,8 +943,10 @@ function izrisiKarticeRezultati(disc, ucenci){
     }
     var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
     var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').trim();
+    // Ikona spola na kartici: M → ♂, Ž → ♀, nevtralna (oba spola) → ♂♀.
+    var ikonaSpol = d.gender === 'M' ? '♂ ' : (d.gender === 'Ž' ? '♀ ' : '♂♀ ');
     kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
-        '<div class="ime">' + esc(imeK) + '</div>' +
+        '<div class="ime">' + esc(ikonaSpol + imeK) + '</div>' +
         '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
         '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
   }
