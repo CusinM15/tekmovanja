@@ -56,28 +56,32 @@ def records_csv_template(disciplines) -> str:
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. Vsaka vrstica pomeni EN najboljši rezultat (rekord).\n"
         "2. »Disciplina« = ime discipline iz seznama spodaj (npr. tek 60m).\n"
-        "3. »Učenec« = IME + PRIIMEK učenca (npr. Tim Novak) in »Razred« = 2.r ali 3.r\n"
-        "   (tako sistem najde pravega učenca).\n"
-        "4. »Čas / dolžina« s DECIMALNO VEJICO (npr. tek: 12,5; skok/met: 3,20).\n"
-        "5. »Datum« (neobvezen) v obliki LLLL-MM-DD, npr. 2026-05-18.\n"
-        "6. Datoteko shrani kot .csv in jo uvozi.\n\n"
+        "3. »Leto« = leto rekorda (npr. 2026).\n"
+        "4. »Ime Priimek« = IME + PRIIMEK učenca (npr. Tim Novak).\n"
+        "5. »Šola« = ime šole (neobvezno, za pregled).\n"
+        "6. »Razred« = 2.r ali 3.r in »Spol« = M ali Ž (tako sistem najde pravega učenca).\n"
+        "7. »Rezultat« s DECIMALNO VEJICO (npr. tek: 12,5; skok/met: 3,20).\n"
+        "8. »Opombe« neobvezne. Datoteko shrani kot .csv in jo uvozi.\n\n"
         "Discipline:\n" + disc_lines + "\n\n"
-        "Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe\n"
-        "tek 60m;Tim Novak;2.r;12,5;2026-05-18;\n"
+        "Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe\n"
+        "tek 60m;2026;Tim Novak;OŠ Žirovnica;2.r;M;12,5;\n"
     )
 
 
 def records_to_csv(records) -> str:
     """Izvoz rekordov v CSV (delimiter ; zaradi decimalnih vejic pri časih)."""
-    lines = ["Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe"]
+    lines = ["Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe"]
     for r in records:
         dname = r.discipline.name if r.discipline else ""
         ime = r.pupil_name or (f"{r.pupil.first_name} {r.pupil.last_name}" if r.pupil else "")
+        sola = (r.school_name
+                or (r.pupil.school.name if r.pupil and r.pupil.school else ""))
         razred = r.pupil_grade or ""
+        spol = "Ž" if r.pupil_gender == "Ž" else ("M" if r.pupil_gender == "M" else "")
         cas = str(r.time).replace(".", ",")
-        datum = r.date_recorded.strftime("%Y-%m-%d") if r.date_recorded else ""
+        leto = r.date_recorded.strftime("%Y") if r.date_recorded else ""
         opombe = (r.notes or "").replace(";", ",").replace("\n", " ")
-        lines.append(";".join([dname, ime, razred, cas, datum, opombe]))
+        lines.append(";".join([dname, leto, ime, sola, razred, spol, cas, opombe]))
     return "\n".join(lines) + "\n"
 
 
@@ -333,19 +337,26 @@ def _slovene_font():
 
 def _reg_fonts():
     """Registrira in vrne ime UniCode pisave za PDF-je.
-    Z DejaVuSans so š/ž/č in ♂/♀ v PDF-jih popolno prikazani tudi na Windowsu
-    (prej je tam padel na Helvetica in se znaki pokvarili)."""
+    Z DejaVuSans (ali na Windowsu Arial) so š/ž/č in ♂/♀ v PDF-jih pravilno
+    prikazani; le če NI nobene UniCode TTF, pade na Helvetica (Latin-1)."""
+    import os
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     f = _slovene_font()
-    if not f or "DejaVu" not in f:
+    if not f:
         return "Helvetica"
-    if "DejaVuSans" not in pdfmetrics.getRegisteredFontNames():
+    if "DejaVu" in os.path.basename(f) or "DejaVu" in f:
+        name = "DejaVuSans"
+    elif "arial" in os.path.basename(f).lower():
+        name = "ArialUni"
+    else:
+        name = "UniFont"
+    if name not in pdfmetrics.getRegisteredFontNames():
         try:
-            pdfmetrics.registerFont(TTFont("DejaVuSans", f))
+            pdfmetrics.registerFont(TTFont(name, f))
         except Exception:
             return "Helvetica"
-    return "DejaVuSans"
+    return name
 
 
 def _cell_par(text, font, size=10):

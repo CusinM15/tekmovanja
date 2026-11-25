@@ -657,15 +657,18 @@ async def record_csv_import(
     if rows and rows[0]:
         rows[0][0] = rows[0][0].lstrip("\ufeff")
 
-    # Poisči glavo (vrstico s »Disciplina« in »Učenec«)
+    # Poisči glavo (vrstico s »Disciplina« in »Ime Priimek« / »Učenec«)
     header_idx = None
     for idx, r in enumerate(rows):
         nizki = {c.strip().lower() for c in r if c.strip()}
-        if "disciplina" in nizki and ("učenec" in nizki or "ucenec" in nizki):
+        ima_ucenca = ("učenec" in nizki or "ucenec" in nizki
+                      or ("ime priimek" in nizki
+                          or ("ime" in nizki and "priimek" in nizki)))
+        if "disciplina" in nizki and ima_ucenca:
             header_idx = idx
             break
     if header_idx is None:
-        raise HTTPException(status_code=400, detail="CSV manjka glava: Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe")
+        raise HTTPException(status_code=400, detail="CSV manjka glava: Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe")
 
     def norm_sport(nm):
         return re.sub(r"[\s]*[♂♀]\s*$", "", (nm or "").strip()).strip().lower()
@@ -677,20 +680,21 @@ async def record_csv_import(
         cells = [((c or "").strip()) for c in row]
         if not any(cells):
             continue
-        if len(cells) < 4:
-            errors.append("vrstica manj kot 4 stolpce: " + "|".join(cells))
+        if len(cells) < 7:
+            errors.append("vrstica manj kot 7 stolpcev: " + "|".join(cells))
             continue
-        sport_raw, ucenec, razred, cas = cells[0], cells[1], cells[2], cells[3]
-        datum = cells[4] if len(cells) > 4 else ""
-        opombe = cells[5] if len(cells) > 5 else ""
+        # Novo polje: Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe
+        sport_raw, leto, ucenec, sola, razred, spol = (
+            cells[0], cells[1], cells[2], cells[3], cells[4], cells[5])
+        cas = cells[6]
+        opombe = cells[7] if len(cells) > 7 else ""
 
         disc = disc_by_norm.get(norm_sport(sport_raw))
         if not disc:
             errors.append(f"neznana disciplina: {sport_raw}")
             continue
-        # sestavi ime+priimek (lahko 'Tim Novak' ali 'Tim,Novak' ali 'Tim Novak')
-        ucenec_cist = ucenec.strip()
-        deli = re.split(r"[\s,]+", ucenec_cist)
+        # sestavi ime+priimek (lahko 'Tim Novak' ali 'Tim,Novak')
+        deli = re.split(r"[\s,]+", ucenec.strip())
         if len(deli) < 2:
             errors.append(f"učenec mora imeti ime in priimek: {ucenec}")
             continue
@@ -699,6 +703,9 @@ async def record_csv_import(
         grit = _norm_razred_rekordov(razred)
         if grit:
             q = q.filter(Pupil.grade == grit)
+        gspol = (spol or "").strip().upper()
+        if gspol in ("M", "Ž"):
+            q = q.filter(Pupil.gender == gspol)
         pupil = q.first()
         if not pupil:
             errors.append(f"učenec ni najden: {ucenec} (razred {razred})")
@@ -706,17 +713,22 @@ async def record_csv_import(
         try:
             t = float(cas.replace(",", "."))
         except ValueError:
-            errors.append(f"neveljaven čas: {cas}")
+            errors.append(f"neveljaven rezultat: {cas}")
             continue
         if t < 0:
-            errors.append(f"negativen čas: {cas}")
+            errors.append(f"negativen rezultat: {cas}")
             continue
+        # leto rekorda -> datum (ob neznani konverziji doda napako)
         rec_date = None
-        if datum.strip():
+        if leto.strip():
+            l = leto.strip()
             try:
-                rec_date = datetime.strptime(datum.strip(), "%Y-%m-%d")
+                if len(l) == 4 and l.isdigit():
+                    rec_date = datetime(int(l), 1, 1)
+                else:
+                    raise ValueError
             except ValueError:
-                errors.append(f"neveljaven datum (LLLL-MM-DD): {datum}")
+                errors.append(f"neveljavno leto (LLLL): {leto}")
                 continue
         # preskoči podvojitve (ista disciplina + učenec + čas)
         exists = db.query(Record).filter(
@@ -736,7 +748,7 @@ async def record_csv_import(
             pupil_name=f"{pupil.first_name} {pupil.last_name}",
             pupil_grade=pupil.grade,
             pupil_gender=pupil.gender,
-            school_name=pupil.school.name if pupil.school else None,
+            school_name=(sola) or (pupil.school.name if pupil.school else None),
         ))
         created += 1
     db.commit()

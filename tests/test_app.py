@@ -625,14 +625,15 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     # predloga
     t = client.get("/records/csv-template")
     assert t.status_code == 200
-    assert "Disciplina;Učenec;Razred;Čas / dolžina" in t.text
+    assert "Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat" in t.text
 
     # izberi realnega učenca 2.r iz seeda in zgradi CSV vrstico
     ucenci = client.get("/pupils").json()
     u = next(x for x in ucenci if x["grade"] == "2.r")
+    sola = u.get("school_name") or ""
     csv_content = (
-        "Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe\n"
-        f"tek 60m;{u['first_name']} {u['last_name']};{u['grade']};12,5;2026-05-18;\n"
+        "Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe\n"
+        f"tek 60m;2026;{u['first_name']} {u['last_name']};{sola};{u['grade']};{u['gender']};12,5;\n"
     )
     def _uvoz():
         return client.post("/records/csv-import",
@@ -649,14 +650,14 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     r2 = _uvoz()
     assert r2.json()["created"] == 0, r2.json()
 
-    # izvoz vsebuje uvozeno/disciplino in učenca
+    # izvoz vsebuje disciplino, letnico, učenca in šolo
     ex = client.get("/records/csv-export")
     assert ex.status_code == 200
-    assert "tek 60m" in ex.text and u["last_name"] in ex.text
+    assert "tek 60m" in ex.text and "2026" in ex.text and u["last_name"] in ex.text
 
     # neznana disciplina -> podana kot napaka, ok=False
-    csv_slab = ("Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe\n"
-                f"neznana;{u['first_name']} {u['last_name']};{u['grade']};12,5;\n")
+    csv_slab = ("Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe\n"
+                f"neznana;2026;{u['first_name']} {u['last_name']};{sola};{u['grade']};{u['gender']};12,5;\n")
     r3 = client.post("/records/csv-import",
                      files={"file": ("slab.csv", csv_slab.encode("utf-8"), "text/csv")})
     assert r3.status_code == 200
