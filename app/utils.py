@@ -60,7 +60,17 @@ def _brez_ikone(name):
 
 def records_csv_template(disciplines) -> str:
     """Prazna CSV predloga za uvod rekordov (najboljših rezultatov)."""
-    disc_lines = "\n".join(f"{d.id}. {_brez_ikone(d.name)}" for d in disciplines)
+    # Vsako disciplino le ENKRAT (v bazi sta par ♂/♀, ki se po odstranitvi ikone podvaja).
+    seen = set()
+    uniq = []
+    for d in disciplines:
+        base = _brez_ikone(d.name)
+        key = base.lower()
+        if not base or key in seen:
+            continue
+        seen.add(key)
+        uniq.append(f"{len(uniq) + 1}. {base}")
+    disc_lines = "\n".join(uniq)
     content_whole = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. Vsaka vrstica pomeni EN najboljši rezultat (rekord).\n"

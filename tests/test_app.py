@@ -667,3 +667,24 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
                      files={"file": ("slab.csv", csv_slab.encode("utf-8"), "text/csv")})
     assert r3.status_code == 200
     assert r3.json()["ok"] is False and len(r3.json()["errors"]) == 1
+
+
+def test_rekordi_predloga_discipline_le_enkrat():
+    """V »Discipline:« seznamu predloge je vsaka disciplina ENKRAT, brez ikon ♂/♀
+    (v bazi sta par ♂/♀, ki se po odstranitvi ikone ne sme podvajati)."""
+    from types import SimpleNamespace
+    from app.utils import records_csv_template
+    disc = [
+        SimpleNamespace(id=1, name="tek 60m ♂"),
+        SimpleNamespace(id=2, name="tek 60m ♀"),
+        SimpleNamespace(id=3, name="tek 400m ♂"),
+        SimpleNamespace(id=4, name="tek 400m ♀"),
+    ]
+    txt = records_csv_template(disc).lstrip("\ufeff")
+    lines = txt.splitlines()
+    d0 = next(i for i, l in enumerate(lines) if l.strip() == "Discipline:")
+    d1 = next(i for i, l in enumerate(lines) if l.startswith("Disciplina,"))
+    leg = [l for l in lines[d0 + 1:d1] if l.strip()]
+    assert len(leg) == 2, leg
+    assert leg == ["1. tek 60m", "2. tek 400m"], leg
+    assert all("♂" not in l and "♀" not in l for l in leg)
