@@ -217,8 +217,6 @@
       </div>
       <div class="vrstica-gumbov">
         <button class="gumb gumb-siv" onclick="nazajRezultati()">← Nazaj na discipline</button>
-        <a class="gumb gumb-orange" href="#" target="_blank" id="rz-detail-pdf">📄 PDF discipline</a>
-        <button class="gumb gumb-moder" onclick="natovoriRezultate()">🔄 Osveži</button>
       </div>
       <div id="rz-skupine"></div>
     </div>
@@ -1008,7 +1006,6 @@ function prikaziRezultateDiscipline(id, spolFil){
   $('rz-detail-izbira').innerHTML = opcije;
   $('rz-detail-naslov').textContent = String(dsc.name || '').replace(/[♂♀][\s]*$/g, '').trim() +
     (spolFil ? ' ' + (spolFil === 'M' ? '♂' : '♀') : '');
-  $('rz-detail-pdf').href = '/results-pdf?discipline_id=' + id;
   var discSpol = (dsc.gender || '').toUpperCase();
 
   // V vsaki skupini izpišemo VSE učence ustreznega razreda in spola discipline
