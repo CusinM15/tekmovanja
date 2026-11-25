@@ -49,6 +49,38 @@ def generate_csv_template() -> str:
     return template
 
 
+def records_csv_template(disciplines) -> str:
+    """Prazna CSV predloga za uvod rekordov (najboljših rezultatov)."""
+    disc_lines = "\n".join(f"{d.id}. {d.name}" for d in disciplines)
+    return (
+        "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
+        "1. Vsaka vrstica pomeni EN najboljši rezultat (rekord).\n"
+        "2. »Disciplina« = ime discipline iz seznama spodaj (npr. tek 60m).\n"
+        "3. »Učenec« = IME + PRIIMEK učenca (npr. Tim Novak) in »Razred« = 2.r ali 3.r\n"
+        "   (tako sistem najde pravega učenca).\n"
+        "4. »Čas / dolžina« s DECIMALNO VEJICO (npr. tek: 12,5; skok/met: 3,20).\n"
+        "5. »Datum« (neobvezen) v obliki LLLL-MM-DD, npr. 2026-05-18.\n"
+        "6. Datoteko shrani kot .csv in jo uvozi.\n\n"
+        "Discipline:\n" + disc_lines + "\n\n"
+        "Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe\n"
+        "tek 60m;Tim Novak;2.r;12,5;2026-05-18;\n"
+    )
+
+
+def records_to_csv(records) -> str:
+    """Izvoz rekordov v CSV (delimiter ; zaradi decimalnih vejic pri časih)."""
+    lines = ["Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe"]
+    for r in records:
+        dname = r.discipline.name if r.discipline else ""
+        ime = r.pupil_name or (f"{r.pupil.first_name} {r.pupil.last_name}" if r.pupil else "")
+        razred = r.pupil_grade or ""
+        cas = str(r.time).replace(".", ",")
+        datum = r.date_recorded.strftime("%Y-%m-%d") if r.date_recorded else ""
+        opombe = (r.notes or "").replace(";", ",").replace("\n", " ")
+        lines.append(";".join([dname, ime, razred, cas, datum, opombe]))
+    return "\n".join(lines) + "\n"
+
+
 def get_active_schools() -> List[dict]:
     """Get list of active schools in dict format for API responses."""
     session = get_db_session()

@@ -227,22 +227,15 @@
     <p class="opis">Tu lahko dodajate, urejate in brišete najboljše rezultate (rekorde). Rekordi ostanejo shranjeni tudi po koncu tekmovanja.</p>
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalRekord()">＋ Dodaj rekord</button>
-      <button class="gumb gumb-moder" onclick="natovoriRekorde()">🔄 Osveži</button>
-      <button class="gumb gumb-orange" onclick="natovoriBestResults()">🏆 Najboljši po disciplinah</button>
+      <button class="gumb gumb-moder" onclick="izvoziRekordeCsv()">📤 Izvozi rekorde v CSV</button>
+      <button class="gumb gumb-siv" onclick="odpriModalUvozRekordovCsv()">📥 Uvozi rekorde iz CSV</button>
+      <button class="gumb gumb-orange" onclick="prenesiPredlogaRekordiCsv()">📄 Prenesi CSV predlogo za rekorde</button>
     </div>
     <table class="sortable">
       <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Šola</th><th>Čas / dolžina</th><th>Datum</th><th></th></tr></thead>
       <tbody id="tabela-rekordi"></tbody>
     </table>
     <div class="prazno" id="prazno-rekordi" style="display:none">Ni še zabeleženih rekordov.</div>
-
-    <h3 style="margin-top:28px" id="naslov-best">🏆 Najboljši rezultati po disciplinah in razredih</h3>
-    <p class="opis">Za vsako disciplino in razred najboljši čas; ob izenačenju so vsi najboljši v isti vrstici.</p>
-    <table id="tabela-best" class="sortable" style="display:none">
-      <thead><tr><th>Disciplina</th><th>Razred</th><th>Čas / dolžina</th><th>Učenci</th></tr></thead>
-      <tbody id="tabela-best-body"></tbody>
-    </table>
-    <div class="prazno" id="prazno-best" style="display:none">Ni še najboljših rezultatov.</div>
   </section>
 
   <!-- ============ ŠTARTNE LISTE ============ -->
@@ -1423,24 +1416,40 @@ function pocistiPodatke(){
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
-function natovoriBestResults(){
-  api('/best-results').then(function(rez){
-    var vrstice = '';
-    for (var i = 0; i < rez.length; i++){
-      var r = rez[i];
-      vrstice += '<tr>' +
-        '<td><strong>' + esc(r.discipline_name) + '</strong></td>' +
-        '<td>' + esc(r.grade) + '</td>' +
-        '<td><strong>' + casLepo(r.time, r.discipline_name) + '</strong></td>' +
-        '<td>' + esc(r.pupils.join(', ')) + '</td>' +
-        '</tr>';
-    }
-    $('tabela-best-body').innerHTML = vrstice;
-    $('tabela-best').style.display = rez.length ? 'table' : 'none';
-    $('prazno-best').style.display = rez.length ? 'none' : 'block';
-    $('naslov-best').style.display = 'block';
-    if (rez.length) toast('Prikazanih ' + rez.length + ' najboljših rezultatov.', 'ok');
-  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+/* ================= REKORDI: CSV IZVOZ / UVOZ / PREDLOGA ================= */
+function izvoziRekordeCsv(){
+  // Download prek server endpointa — v LibreWolfu/Firefoxu zanesljivejše kot Blob.
+  window.location.href = '/records/csv-export';
+}
+
+function prenesiPredlogaRekordiCsv(){
+  window.location.href = '/records/csv-template';
+}
+
+function odpriModalUvozRekordovCsv(){
+  $('modal-vsebina').innerHTML =
+    '<h3>📥 Uvozi rekorde iz CSV</h3>' +
+    '<div class="info">Izberite CSV datoteko z rekordi. Stolpci (ločeni s podpičjem ;): Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe. Najprej lahko prenesete predlogo.</div>' +
+    '<div class="polje"><label>CSV datoteka</label><input id="f-csv-rekordi" type="file" accept=".csv,text/csv"></div>' +
+    '<div class="modal-gumbi">' +
+      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
+      '<button class="gumb gumb-zelen" onclick="uvoziRekordeCsv()">Uvozi</button>' +
+    '</div>';
+  odpriModal();
+}
+
+function uvoziRekordeCsv(){
+  var input = $('f-csv-rekordi');
+  if (!input.files || !input.files[0]){ toast('Izberite CSV datoteko.', 'napaka'); return; }
+  var fd = new FormData();
+  fd.append('file', input.files[0]);
+  api('/records/csv-import', 'POST', fd).then(function(r){
+    var besedilo = r.message || '';
+    if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
+    toast(besedilo, r.ok === false ? 'napaka' : 'ok');
+    zapriModal();
+    natovoriRekorde(); natovoriPregled();
+  }).catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }
 
 /* ================= MODAL ================= */

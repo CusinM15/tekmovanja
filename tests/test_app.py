@@ -617,3 +617,47 @@ def test_sola_vec_enaslovov(client):
     r2 = client.post("/schools", data={"name": "OŠ Napaka", "email": "d@x.si, brez-at"})
     assert r2.status_code == 400, r2.text
     assert "ni veljaven" in r2.json()["detail"]
+
+
+def test_rekordi_csv_uvoz_izvoz_predloga(client):
+    """Rekordi: predloga + izvoz delujeta; uvoz iz CSV doda rekord, ponovni uvoz
+    iste datoteke ne podvoji ničesar (idempotentno)."""
+    # predloga
+    t = client.get("/records/csv-template")
+    assert t.status_code == 200
+    assert "Disciplina;Učenec;Razred;Čas / dolžina" in t.text
+
+    # izberi realnega učenca 2.r iz seeda in zgradi CSV vrstico
+    ucenci = client.get("/pupils").json()
+    u = next(x for x in ucenci if x["grade"] == "2.r")
+    csv_content = (
+        "Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe\n"
+        f"tek 60m;{u['first_name']} {u['last_name']};{u['grade']};12,5;2026-05-18;\n"
+    )
+    def _uvoz():
+        return client.post("/records/csv-import",
+                           files={"file": ("rekordi.csv", csv_content.encode("utf-8"), "text/csv")})
+
+    r = _uvoz()
+    assert r.status_code == 200, r.text
+    b = r.json()
+    # uvozi skozi (ali ustvari, ali prepozna kot podvojeno iz seeda), napak naj ne bo
+    assert (b["created"] + b["skipped"]) >= 1, b
+    assert b["ok"] is True, b
+
+    # ponovni uvoz iste datoteke — nič novega ne doda
+    r2 = _uvoz()
+    assert r2.json()["created"] == 0, r2.json()
+
+    # izvoz vsebuje uvozeno/disciplino in učenca
+    ex = client.get("/records/csv-export")
+    assert ex.status_code == 200
+    assert "tek 60m" in ex.text and u["last_name"] in ex.text
+
+    # neznana disciplina -> podana kot napaka, ok=False
+    csv_slab = ("Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe\n"
+                f"neznana;{u['first_name']} {u['last_name']};{u['grade']};12,5;\n")
+    r3 = client.post("/records/csv-import",
+                     files={"file": ("slab.csv", csv_slab.encode("utf-8"), "text/csv")})
+    assert r3.status_code == 200
+    assert r3.json()["ok"] is False and len(r3.json()["errors"]) == 1

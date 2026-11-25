@@ -598,6 +598,156 @@ def list_records(db=Depends(get_db)):
     records = db.query(Record).all()
     return [r.to_dict() for r in records]
 
+
+@app.get("/records/csv-template", summary="Prenesi CSV predlogo za rekorde (attachment)")
+def record_csv_template_download(db=Depends(get_db)):
+    """Vrne prazno CSV predlogo za uvoz rekordov (attachment)."""
+    from fastapi.responses import Response
+    from app.utils import records_csv_template
+    disc = db.query(Discipline).order_by(Discipline.id).all()
+    content = records_csv_template(disc)
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="predloga_rekordi.csv"'},
+    )
+
+
+@app.get("/records/csv-export", summary="Izvozi vse rekorde v CSV (attachment)")
+def record_csv_export(db=Depends(get_db)):
+    """Izvozi VSE rekorde v CSV (attachment)."""
+    from fastapi.responses import Response
+    from app.utils import records_to_csv
+    records = db.query(Record).all()
+    content = records_to_csv(records)
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="rekordi.csv"'},
+    )
+
+
+def _norm_razred_rekordov(g):
+    g = (g or "").strip()
+    return {"2": "2.r", "3": "3.r", "2.r": "2.r", "3.r": "3.r",
+            "2. razred": "2.r", "3. razred": "3.r"}.get(g, g)
+
+
+@app.post("/records/csv-import", response_model=dict, summary="Uvozi rekorde iz CSV")
+async def record_csv_import(
+    file: UploadFile = Form(...),
+    db=Depends(get_db)
+):
+    """Uvozi rekorde iz CSV (delimiter ';'). Vsako vrstico poveže z obstoječo
+    disciplino (po imenu) in učencem (po imenu+priimku+razredu); podvojitvene
+    preskoči. Vrne število uvoženih in morebitne napake."""
+    import csv
+    import re
+    from io import StringIO
+    if file.content_type not in ("text/csv", "application/csv", "text/plain",
+                                 "application/vnd.ms-excel", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Datoteka ni CSV (content-type: {})".format(file.content_type))
+    content = await file.read()
+    text = content.decode("utf-8", errors="replace")
+
+    reader = csv.reader(StringIO(text), delimiter=";")
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Prazna CSV datoteka.")
+    if rows and rows[0]:
+        rows[0][0] = rows[0][0].lstrip("\ufeff")
+
+    # Poisči glavo (vrstico s »Disciplina« in »Učenec«)
+    header_idx = None
+    for idx, r in enumerate(rows):
+        nizki = {c.strip().lower() for c in r if c.strip()}
+        if "disciplina" in nizki and ("učenec" in nizki or "ucenec" in nizki):
+            header_idx = idx
+            break
+    if header_idx is None:
+        raise HTTPException(status_code=400, detail="CSV manjka glava: Disciplina;Učenec;Razred;Čas / dolžina;Datum (LLLL-MM-DD);Opombe")
+
+    def norm_sport(nm):
+        return re.sub(r"[\s]*[♂♀]\s*$", "", (nm or "").strip()).strip().lower()
+
+    disc_by_norm = {norm_sport(d.name): d for d in db.query(Discipline).all()}
+    created, skipped = 0, 0
+    errors = []
+    for row in rows[header_idx + 1:]:
+        cells = [((c or "").strip()) for c in row]
+        if not any(cells):
+            continue
+        if len(cells) < 4:
+            errors.append("vrstica manj kot 4 stolpce: " + "|".join(cells))
+            continue
+        sport_raw, ucenec, razred, cas = cells[0], cells[1], cells[2], cells[3]
+        datum = cells[4] if len(cells) > 4 else ""
+        opombe = cells[5] if len(cells) > 5 else ""
+
+        disc = disc_by_norm.get(norm_sport(sport_raw))
+        if not disc:
+            errors.append(f"neznana disciplina: {sport_raw}")
+            continue
+        # sestavi ime+priimek (lahko 'Tim Novak' ali 'Tim,Novak' ali 'Tim Novak')
+        ucenec_cist = ucenec.strip()
+        deli = re.split(r"[\s,]+", ucenec_cist)
+        if len(deli) < 2:
+            errors.append(f"učenec mora imeti ime in priimek: {ucenec}")
+            continue
+        ime, priimek = deli[0], " ".join(deli[1:])
+        q = db.query(Pupil).filter(Pupil.first_name.ilike(ime), Pupil.last_name.ilike(priimek))
+        grit = _norm_razred_rekordov(razred)
+        if grit:
+            q = q.filter(Pupil.grade == grit)
+        pupil = q.first()
+        if not pupil:
+            errors.append(f"učenec ni najden: {ucenec} (razred {razred})")
+            continue
+        try:
+            t = float(cas.replace(",", "."))
+        except ValueError:
+            errors.append(f"neveljaven čas: {cas}")
+            continue
+        if t < 0:
+            errors.append(f"negativen čas: {cas}")
+            continue
+        rec_date = None
+        if datum.strip():
+            try:
+                rec_date = datetime.strptime(datum.strip(), "%Y-%m-%d")
+            except ValueError:
+                errors.append(f"neveljaven datum (LLLL-MM-DD): {datum}")
+                continue
+        # preskoči podvojitve (ista disciplina + učenec + čas)
+        exists = db.query(Record).filter(
+            Record.discipline_id == disc.id,
+            Record.pupil_id == pupil.id,
+            Record.time == t,
+        ).first()
+        if exists:
+            skipped += 1
+            continue
+        db.add(Record(
+            discipline_id=disc.id,
+            pupil_id=pupil.id,
+            time=t,
+            date_recorded=rec_date or datetime.utcnow(),
+            notes=opombe or None,
+            pupil_name=f"{pupil.first_name} {pupil.last_name}",
+            pupil_grade=pupil.grade,
+            pupil_gender=pupil.gender,
+            school_name=pupil.school.name if pupil.school else None,
+        ))
+        created += 1
+    db.commit()
+    return {
+        "message": f"Uvoženo rekordov: {created} (preskočenih podvojenih: {skipped}).",
+        "ok": len(errors) == 0,
+        "errors": errors[:20],
+        "created": created,
+        "skipped": skipped,
+    }
+
 # === START LIST MANAGEMENT ===
 
 @app.post("/start-lists", response_model=dict, summary="Create start list for discipline+grade")
