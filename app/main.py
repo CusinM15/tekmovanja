@@ -686,7 +686,10 @@ async def record_csv_import(
         raise HTTPException(status_code=400, detail="CSV manjka glava: Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat")
 
     def norm_sport(nm):
-        return re.sub(r"[\s]*[♂♀]\s*$", "", (nm or "").strip()).strip().lower()
+        s = re.sub(r"[\s]*[♂♀]\s*$", "", (nm or "").strip()).strip().lower()
+        # oblikovne različice: "tek na 60m"/"tek na 400m" === "tek 60m"/"tek 400m"
+        s = re.sub(r"\btek na\b", "tek", s)
+        return s
 
     vse_disc = db.query(Discipline).all()
     def poisci_disc(norm, gnorm):
@@ -741,7 +744,20 @@ async def record_csv_import(
         if not pupil:
             # Učenca v bazi ni — sami ga ustvarimo iz vrstice, da lahko shranimo rekord.
             osmola = (sola or "").strip()
-            school = db.query(School).filter(School.name.ilike(osmola)).first() if osmola else None
+            school = None
+            if osmola:
+                school = db.query(School).filter(School.name.ilike(osmola)).first()
+                if school is None:
+                    # Manjkajoča šola iz CSV-ja — ustvarimo jo (placeholder email),
+                    # da lahko uvozimo učenca/rekord.
+                    base = re.sub(r"[^a-z0-9]+", "-", osmola.lower()).strip("-") or "sola"
+                    try:
+                        school = School(name=osmola, email=f"{base}@example.si",
+                                        status=SchoolStatus.ACTIVE.value)
+                        db.add(school)
+                        db.flush()
+                    except Exception:
+                        school = None
             gnorm = gspol if gspol in ("M", "Ž") else "M"
             if school is not None:
                 pupil = Pupil(first_name=ime, last_name=priimek, school_id=school.id,
