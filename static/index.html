@@ -198,10 +198,6 @@
     <div id="rz-pregled">
       <h2>Rezultati tekmovanja</h2>
       <p class="opis">Izberite disciplino za vpogled rezultatov po razredih in spolu.</p>
-      <div class="vrstica-gumbov">
-        <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
-        <a class="gumb gumb-orange" href="/results-pdf" target="_blank">📄 Izvozi PDF (vse)</a>
-      </div>
       <div class="kartice" id="rz-kartice"></div>
       <div class="prazno" id="prazno-rezultati" style="display:none">Ni še rezultatov. Najprej jih vnesite v disciplinah.</div>
       <h3 style="margin-top:30px">🏅 Šole po točkah</h3>
@@ -222,7 +218,6 @@
       <div class="vrstica-gumbov">
         <button class="gumb gumb-siv" onclick="nazajRezultati()">← Nazaj na discipline</button>
         <a class="gumb gumb-orange" href="#" target="_blank" id="rz-detail-pdf">📄 PDF discipline</a>
-        <button class="gumb gumb-zelen" onclick="odpriModalRezultat()">＋ Dodaj rezultat</button>
         <button class="gumb gumb-moder" onclick="natovoriRezultate()">🔄 Osveži</button>
       </div>
       <div id="rz-skupine"></div>
