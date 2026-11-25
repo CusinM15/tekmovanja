@@ -638,8 +638,8 @@ async def record_csv_import(
     file: UploadFile = Form(...),
     db=Depends(get_db)
 ):
-    """Uvozi rekorde iz CSV (delimiter ';'). Vsako vrstico poveže z obstoječo
-    disciplino (po imenu) in učencem (po imenu+priimku+razredu); podvojitvene
+    """Uvozi rekorde iz CSV (delimiter ','). Vsako vrstico poveže z obstoječo
+    disciplino (po imenu) in učencem (po imenu+priimku+razredu+spolu); podvojitvene
     preskoči. Vrne število uvoženih in morebitne napake."""
     import csv
     import re
@@ -650,7 +650,7 @@ async def record_csv_import(
     content = await file.read()
     text = content.decode("utf-8", errors="replace")
 
-    reader = csv.reader(StringIO(text), delimiter=";")
+    reader = csv.reader(StringIO(text), delimiter=",")
     rows = list(reader)
     if not rows:
         raise HTTPException(status_code=400, detail="Prazna CSV datoteka.")
@@ -668,7 +668,7 @@ async def record_csv_import(
             header_idx = idx
             break
     if header_idx is None:
-        raise HTTPException(status_code=400, detail="CSV manjka glava: Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe")
+        raise HTTPException(status_code=400, detail="CSV manjka glava: Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat")
 
     def norm_sport(nm):
         return re.sub(r"[\s]*[♂♀]\s*$", "", (nm or "").strip()).strip().lower()
@@ -683,11 +683,10 @@ async def record_csv_import(
         if len(cells) < 7:
             errors.append("vrstica manj kot 7 stolpcev: " + "|".join(cells))
             continue
-        # Novo polje: Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe
+        # Novo polje: Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat
         sport_raw, leto, ucenec, sola, razred, spol = (
             cells[0], cells[1], cells[2], cells[3], cells[4], cells[5])
         cas = cells[6]
-        opombe = cells[7] if len(cells) > 7 else ""
 
         disc = disc_by_norm.get(norm_sport(sport_raw))
         if not disc:
@@ -744,7 +743,6 @@ async def record_csv_import(
             pupil_id=pupil.id,
             time=t,
             date_recorded=rec_date or datetime.utcnow(),
-            notes=opombe or None,
             pupil_name=f"{pupil.first_name} {pupil.last_name}",
             pupil_grade=pupil.grade,
             pupil_gender=pupil.gender,

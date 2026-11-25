@@ -1429,7 +1429,7 @@ function prenesiPredlogaRekordiCsv(){
 function odpriModalUvozRekordovCsv(){
   $('modal-vsebina').innerHTML =
     '<h3>📥 Uvozi rekorde iz CSV</h3>' +
-    '<div class="info">Izberite CSV datoteko z rekordi. Stolpci (ločeni s podpičjem ;): Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe. Najprej lahko prenesete predlogo.</div>' +
+    '<div class="info">Izberite CSV datoteko z rekordi. Stolpci (ločeni z vejico ,): Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat. Rezultat z decimalno PIKO (npr. 10.47). Najprej lahko prenesete predlogo.</div>' +
     '<div class="polje"><label>CSV datoteka</label><input id="f-csv-rekordi" type="file" accept=".csv,text/csv"></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +

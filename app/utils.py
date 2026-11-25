@@ -61,11 +61,11 @@ def records_csv_template(disciplines) -> str:
         "4. »Ime Priimek« = IME + PRIIMEK učenca (npr. Tim Novak).\n"
         "5. »Šola« = ime šole (neobvezno, za pregled).\n"
         "6. »Razred« = 2.r ali 3.r in »Spol« = M ali Ž (tako sistem najde pravega učenca).\n"
-        "7. »Rezultat« s DECIMALNO VEJICO (npr. tek: 12,5; skok/met: 3,20).\n"
-        "8. »Opombe« neobvezne. Datoteko shrani kot .csv in jo uvozi.\n\n"
+        "7. »Rezultat« s DECIMALNO PIKO (npr. tek: 10.47; skok/met: 3.20).\n"
+        "8. Stolpce ločuj z VEJICO. Datoteko shrani kot .csv in jo uvozi.\n\n"
         "Discipline:\n" + disc_lines + "\n\n"
-        "Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe\n"
-        "tek 60m;2026;Tim Novak;OŠ Žirovnica;2.r;M;12,5;\n"
+        "Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat\n"
+        "tek 60m,2026,Tim Novak,OŠ Žirovnica,2.r,M,10.47\n"
     )
     # UTF-8 BOM (\ufeff) na začetku, da Windows Excel/Notepad prepozna UTF-8
     # in NE prikaže š/ž/č/Ž/♀ kot čudne znake (drugače jih bere kot Windows-1250).
@@ -73,8 +73,8 @@ def records_csv_template(disciplines) -> str:
 
 
 def records_to_csv(records) -> str:
-    """Izvoz rekordov v CSV (delimiter ; zaradi decimalnih vejic pri časih)."""
-    lines = ["Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe"]
+    """Izvoz rekordov v CSV (ločilo ','; decimalna PIKA; brez stolpca opombe)."""
+    lines = ["Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat"]
     for r in records:
         dname = r.discipline.name if r.discipline else ""
         ime = r.pupil_name or (f"{r.pupil.first_name} {r.pupil.last_name}" if r.pupil else "")
@@ -82,12 +82,24 @@ def records_to_csv(records) -> str:
                 or (r.pupil.school.name if r.pupil and r.pupil.school else ""))
         razred = r.pupil_grade or ""
         spol = "Ž" if r.pupil_gender == "Ž" else ("M" if r.pupil_gender == "M" else "")
-        cas = str(r.time).replace(".", ",")
+        cas = _float_lep(r.time)          # decimalna pika (10.47), ne vejica
         leto = r.date_recorded.strftime("%Y") if r.date_recorded else ""
-        opombe = (r.notes or "").replace(";", ",").replace("\n", " ")
-        lines.append(";".join([dname, leto, ime, sola, razred, spol, cas, opombe]))
+        lines.append(",".join([dname, leto, ime, sola, razred, spol, cas]))
     # UTF-8 BOM (\ufeff) — za pravilen prikaz š/ž/č/Ž v Windows Excelu/Notepadu.
     return "\ufeff" + "\n".join(lines) + "\n"
+
+
+def _float_lep(v):
+    """Število lepo na ven: brez nepotrebnih ničel, z decimalno PIKO (10.47)."""
+    if v is None:
+        return ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    if f == int(f):
+        return str(int(f))
+    return str(f)
 
 
 def get_active_schools() -> List[dict]:
