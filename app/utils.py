@@ -50,9 +50,17 @@ def generate_csv_template() -> str:
     return "\ufeff" + template
 
 
+def _brez_ikone(name):
+    """Odstrani ikono ♂/♀ s konca imena discipline (npr. 'tek 60m ♂' -> 'tek 60m')."""
+    import re
+    if not name:
+        return ""
+    return re.sub(r"\s*[♂♀]\s*$", "", name).strip()
+
+
 def records_csv_template(disciplines) -> str:
     """Prazna CSV predloga za uvod rekordov (najboljših rezultatov)."""
-    disc_lines = "\n".join(f"{d.id}. {d.name}" for d in disciplines)
+    disc_lines = "\n".join(f"{d.id}. {_brez_ikone(d.name)}" for d in disciplines)
     content_whole = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. Vsaka vrstica pomeni EN najboljši rezultat (rekord).\n"
@@ -76,7 +84,7 @@ def records_to_csv(records) -> str:
     """Izvoz rekordov v CSV (ločilo ','; decimalna PIKA; brez stolpca opombe)."""
     lines = ["Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat"]
     for r in records:
-        dname = r.discipline.name if r.discipline else ""
+        dname = _brez_ikone(r.discipline.name) if r.discipline else ""
         ime = r.pupil_name or (f"{r.pupil.first_name} {r.pupil.last_name}" if r.pupil else "")
         sola = (r.school_name
                 or (r.pupil.school.name if r.pupil and r.pupil.school else ""))
