@@ -626,6 +626,8 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     t = client.get("/records/csv-template")
     assert t.status_code == 200
     assert "Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat" in t.text
+    # UTF-8 BOM na začetku — da Windows Excel/Notepad prepozna UTF-8 (š/ž/č ne smejo biti pokvarjeni)
+    assert t.content[:3] == b"\xef\xbb\xbf", "predloga mora imeti UTF-8 BOM"
 
     # izberi realnega učenca 2.r iz seeda in zgradi CSV vrstico
     ucenci = client.get("/pupils").json()
@@ -653,6 +655,7 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     # izvoz vsebuje disciplino, letnico, učenca in šolo
     ex = client.get("/records/csv-export")
     assert ex.status_code == 200
+    assert ex.content[:3] == b"\xef\xbb\xbf", "izvoz mora imeti UTF-8 BOM"
     assert "tek 60m" in ex.text and "2026" in ex.text and u["last_name"] in ex.text
 
     # neznana disciplina -> podana kot napaka, ok=False

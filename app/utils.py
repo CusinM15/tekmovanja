@@ -46,13 +46,14 @@ def generate_csv_template() -> str:
         "1,tek 60m\n2,tek 400m\n3,skok v daljino\n4,met vorteksa\n\n"
         "Ime, Priimek, Razred, Spol, Discipline (ID)\n"
     )
-    return template
+    # UTF-8 BOM (\ufeff) — da Windows Excel/Notepad prepozna UTF-8 in š/ž/č niso pokvarjeni.
+    return "\ufeff" + template
 
 
 def records_csv_template(disciplines) -> str:
     """Prazna CSV predloga za uvod rekordov (najboljših rezultatov)."""
     disc_lines = "\n".join(f"{d.id}. {d.name}" for d in disciplines)
-    return (
+    content_whole = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. Vsaka vrstica pomeni EN najboljši rezultat (rekord).\n"
         "2. »Disciplina« = ime discipline iz seznama spodaj (npr. tek 60m).\n"
@@ -66,6 +67,9 @@ def records_csv_template(disciplines) -> str:
         "Disciplina;Leto;Ime Priimek;Šola;Razred;Spol;Rezultat;Opombe\n"
         "tek 60m;2026;Tim Novak;OŠ Žirovnica;2.r;M;12,5;\n"
     )
+    # UTF-8 BOM (\ufeff) na začetku, da Windows Excel/Notepad prepozna UTF-8
+    # in NE prikaže š/ž/č/Ž/♀ kot čudne znake (drugače jih bere kot Windows-1250).
+    return "\ufeff" + content_whole
 
 
 def records_to_csv(records) -> str:
@@ -82,7 +86,8 @@ def records_to_csv(records) -> str:
         leto = r.date_recorded.strftime("%Y") if r.date_recorded else ""
         opombe = (r.notes or "").replace(";", ",").replace("\n", " ")
         lines.append(";".join([dname, leto, ime, sola, razred, spol, cas, opombe]))
-    return "\n".join(lines) + "\n"
+    # UTF-8 BOM (\ufeff) — za pravilen prikaz š/ž/č/Ž v Windows Excelu/Notepadu.
+    return "\ufeff" + "\n".join(lines) + "\n"
 
 
 def get_active_schools() -> List[dict]:
