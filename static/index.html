@@ -927,9 +927,9 @@ function natovoriTockeSole(){
 }
 
 function izrisiKarticeRezultati(disc, ucenci){
-  // Vsak šport (skupina disciplin z istim imenom) dobi SVOJO VRSTICO z dvema
-  // karticama: najprej ŽENSKE (roza), nato MOŠKI (modro). Nevtralna disciplina
-  // prikaže oba; spolno omejena le svojega.
+  // Vsak šport (skupina disciplin z istim imenom) dobi SVOJO VRSTICO z DVEMA
+  // karticama — vedno ŽENSKE (roza) prve, nato MOŠKI (modro) — ne glede na
+  // d.gender (šport je nevtralen; spol+razred določata skupino v detajlu).
   var spletSportov = [];
   var seenSport = {};
   for (var i = 0; i < (disc || []).length; i++){
@@ -937,23 +937,19 @@ function izrisiKarticeRezultati(disc, ucenci){
     var k = String(d.name || '').toLowerCase().replace(/[♂♀][\s]*$/g, '').replace(/\s+/g, ' ').trim();
     if (seenSport[k]) continue;
     seenSport[k] = true;
-    var sprejmi = { M: true, Ž: true };   // nevtralen šport -> oba spola
-    if (d.gender === 'M') sprejmi = { M: true, Ž: false };
-    else if (d.gender === 'Ž') sprejmi = { M: false, Ž: true };
-    spletSportov.push({ d: d, sprejmi: sprejmi });
+    spletSportov.push({ d: d });
   }
   var ucm = {};
   for (var ui = 0; ui < ucenci.length; ui++) ucm[ucenci[ui].id] = ucenci[ui];
   var vrste = '';
   for (var s = 0; s < spletSportov.length; s++){
-    var d = spletSportov[s].d, sprejmi = spletSportov[s].sprejmi;
+    var d = spletSportov[s].d;
     var deli = (d.applicable_grades || '').split(',');
     var veljavni = {};
     for (var ri = 0; ri < deli.length; ri++) veljavni[deli[ri].trim()] = true;
     var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').trim();
-    // Ženske prve, nato moški.
-    var mozni = sprejmi.Ž ? ['Ž'] : [];
-    if (sprejmi.M) mozni.push('M');
+    // Ženske prve, nato moški (vedno oba spola).
+    var mozni = ['Ž', 'M'];
     var karticeVrstice = '';
     for (var gI = 0; gI < mozni.length; gI++){
       var gender = mozni[gI];
@@ -974,7 +970,6 @@ function izrisiKarticeRezultati(disc, ucenci){
       }
       var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
       var cls = 'kartica ' + (jeMor ? 'moski' : 'zenske');
-      if (mozni.length === 1) cls += ' sam';
       karticeVrstice += '<div class="' + cls + '" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',\'' + gender + '\')">' +
           '<div class="ime">' + esc(ikon + ' ' + imeK) + '</div>' +
           '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
