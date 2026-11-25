@@ -227,9 +227,12 @@
     <p class="opis">Tu lahko dodajate, urejate in brišete najboljše rezultate (rekorde). Rekordi ostanejo shranjeni tudi po koncu tekmovanja.</p>
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="odpriModalRekord()">＋ Dodaj rekord</button>
-      <button class="gumb gumb-moder" onclick="izvoziRekordeCsv()">📤 Izvozi rekorde v CSV</button>
-      <button class="gumb gumb-siv" onclick="odpriModalUvozRekordovCsv()">📥 Uvozi rekorde iz CSV</button>
-      <button class="gumb gumb-orange" onclick="prenesiPredlogaRekordiCsv()">📄 Prenesi CSV predlogo za rekorde</button>
+      <button class="gumb gumb-orange" onclick="izvoziRekordeTxt()">📄 Izvozi txt</button>
+    </div>
+    <div class="polje" style="max-width:820px;margin:4px 0">
+      <label>💾 Vnesi / prilepi rekorde (CSV koda) — vsaka vrstica: <strong>Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat</strong> (rezultat s piko, npr. 10.47)</label>
+      <textarea id="f-rekordi-besedilo" rows="6" style="width:100%;font-family:monospace;font-size:13px;box-sizing:border-box">Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat</textarea>
+      <div><button class="gumb gumb-zelen" style="margin-top:6px" onclick="uvoziRekordeIzTeksta()">💾 Shrani rekorde</button></div>
     </div>
     <table class="sortable">
       <thead><tr><th>Učenec</th><th>Razred</th><th>Disciplina</th><th>Šola</th><th>Čas / dolžina</th><th>Datum</th><th></th></tr></thead>
@@ -1416,54 +1419,25 @@ function pocistiPodatke(){
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
-/* ================= REKORDI: CSV IZVOZ / UVOZ / PREDLOGA ================= */
-function izvoziRekordeCsv(){
-  // Download prek server endpointa — v LibreWolfu/Firefoxu zanesljivejše kot Blob.
-  window.location.href = '/records/csv-export';
-}
-
-function prenesiPredlogaRekordiCsv(){
-  window.location.href = '/records/csv-template';
-}
-
-function odpriModalUvozRekordovCsv(){
-  $('modal-vsebina').innerHTML =
-    '<h3>📥 Uvozi rekorde</h3>' +
-    '<div class="info">Stolpci (ločeni z vejico ,): Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat. Rezultat z decimalno PIKO (npr. 10.47). Vsako vrstico vpiši v svojo vrsto.</div>' +
-    '<div class="polje"><label>A) Vnos / prilepi vrstice neposredno</label>' +
-      '<textarea id="f-rekordi-text" rows="6" style="width:100%;font-family:monospace;font-size:13px">Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat\n</textarea></div>' +
-    '<div class="polje"><label>B) Ali izberi CSV datoteko</label><input id="f-csv-rekordi" type="file" accept=".csv,text/csv"></div>' +
-    '<div class="modal-gumbi">' +
-      '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-      '<button class="gumb gumb-zelen" onclick="uvoziRekordeIzTeksta()">📝 Uvozi iz besedila</button>' +
-      '<button class="gumb gumb-moder" onclick="uvoziRekordeCsv()">📄 Uvozi iz datoteke</button>' +
-    '</div>';
-  odpriModal();
+/* ================= REKORDI: VNOS (CSV koda) / IZVOZ TXT ================= */
+function izvoziRekordeTxt(){
+  // Download prek server endpointa — vrne .txt s tabelo v CSV kodi (UTF-8 BOM).
+  window.location.href = '/records/txt-export';
 }
 
 function obdelajUvozRekordov(r){
   var besedilo = r.message || '';
   if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
   toast(besedilo, r.ok === false ? 'napaka' : 'ok');
-  zapriModal();
   natovoriRekorde(); natovoriPregled();
 }
 
 function uvoziRekordeIzTeksta(){
-  var t = $('f-rekordi-text');
+  var t = $('f-rekordi-besedilo');
   var vsebina = t ? t.value : '';
   if (!vsebina.trim()){ toast('Vpišite ali prilepite vrstice.', 'napaka'); return; }
   var fd = new FormData();
   fd.append('file', new Blob([vsebina], { type: 'text/csv' }), 'rekordi_direktno.csv');
-  api('/records/csv-import', 'POST', fd).then(obdelajUvozRekordov)
-    .catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
-}
-
-function uvoziRekordeCsv(){
-  var input = $('f-csv-rekordi');
-  if (!input.files || !input.files[0]){ toast('Izberite CSV datoteko.', 'napaka'); return; }
-  var fd = new FormData();
-  fd.append('file', input.files[0]);
   api('/records/csv-import', 'POST', fd).then(obdelajUvozRekordov)
     .catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }

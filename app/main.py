@@ -627,6 +627,21 @@ def record_csv_export(db=Depends(get_db)):
     )
 
 
+@app.get("/records/txt-export", summary="Izvozi rekorde v TXT (tabela v CSV kodi)")
+def record_txt_export(db=Depends(get_db)):
+    """Izvozi rekorde v .txt datoteko, ki vsebuje tabelo v CSV kodi (ločilo ',',
+    decimalna pika, UTF-8 BOM na začetku)."""
+    from fastapi.responses import Response
+    from app.utils import records_to_csv
+    records = db.query(Record).all()
+    content = records_to_csv(records)
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="rekordi.txt"'},
+    )
+
+
 def _norm_razred_rekordov(g):
     g = (g or "").strip()
     return {"2": "2.r", "3": "3.r", "2.r": "2.r", "3.r": "3.r",
