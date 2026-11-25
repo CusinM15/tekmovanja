@@ -15,7 +15,7 @@ from pathlib import Path
 from app.database import init_db, get_session
 from app.models import (
     School, Discipline, Pupil, CompetitionEvent, Record, StartList,
-    SchoolStatus, DisciplineType, GradeEnum
+    SchoolStatus, DisciplineType, GradeEnum, parse_email_list,
 )
 from app.settings import app_config
 from app.services import SchoolService, DisciplineService, PupilService, EventService, RecordService, StartListService
@@ -726,7 +726,7 @@ def generate_csv_template():
     
     csv_info = {
         "template": csv_content,
-        "active_schools": [s.name + " (" + s.email + ")" for s in active_schools],
+        "active_schools": [s.name + " (" + ", ".join(parse_email_list(s.email)) + ")" for s in active_schools],
         "instructions": "1. Fill in pupil details\n" \
                         "2. Tick applicable disciplines for the grade\n" \
                         "3. Provide event date and results (time and position)\n" \
@@ -765,7 +765,7 @@ def send_invitations_emails(db=Depends(get_db)):
 
     subject = "Stankov memorial — prijava učencev"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
-    recipients = [s.email for s in active_schools]
+    recipients = [e for s in active_schools for e in parse_email_list(s.email)]
 
     # CSV predloga z ID tabelo disciplin (kot GET /send-invitations)
     disc = db_session.query(Discipline).order_by(Discipline.id).all()
@@ -819,7 +819,7 @@ def send_invitations_emails(db=Depends(get_db)):
         print(f"send-emails napaka: {e}")
         return {"message": _napaka_posiljanja(e), "ok": False}
 
-    return {"message": f"Povabila poslana na {len(recipients)} šol.", "ok": True}
+    return {"message": f"Povabila poslana na {len(recipients)} prejemnikov.", "ok": True}
 
 
 def _napaka_posiljanja(e):
@@ -1202,7 +1202,7 @@ def email_results(
         send_email(
             subject=subject,
             sender=sender,
-            recipients=[s.email for s in active_schools],
+            recipients=[e for s in active_schools for e in parse_email_list(s.email)],
             body=body,
             attachments=[("results.pdf", pdf, "application/pdf")],
         )

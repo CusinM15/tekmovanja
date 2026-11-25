@@ -598,3 +598,22 @@ def test_results_pdf_uvodna_stran_in_16_skupin(client):
     # SUPER STANKO: rekordi, ena stran na razred (2.r nato 3.r)
     assert "SUPER STANKO" in src
     assert '("2.r", "3.r")' in src, "ena stran na razred (2.r in 3.r)"
+
+
+def test_sola_vec_enaslovov(client):
+    """Šola lahko ima VEČ e-poštnih naslovov (ločeni z vejico/podpičjem/presledkom),
+    normaliziranih / dedupliciranih; neveljaven naslov v seznamu zavrne celoten vnos."""
+    r = client.post("/schools", data={
+        "name": "OŠ Multi Naslovi",
+        "email": "a@x.si; b@x.si,  c@x.si   b@x.si"
+    })
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert "email" in s
+    # ločeno z ", ", brez podvojitve (b@x.si se pojavi 2×), vse male črke
+    assert s["email"] == "a@x.si, b@x.si, c@x.si", s["email"]
+
+    # neveljaven naslov v seznamu mora zavrniti celoten vnos (status 400)
+    r2 = client.post("/schools", data={"name": "OŠ Napaka", "email": "d@x.si, brez-at"})
+    assert r2.status_code == 400, r2.text
+    assert "ni veljaven" in r2.json()["detail"]

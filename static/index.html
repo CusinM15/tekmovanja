@@ -494,7 +494,7 @@ function odpriModalSola(id){
     $('modal-vsebina').innerHTML =
       '<h3>' + (jeUrejanje ? '✏️ Uredi šolo' : '＋ Dodaj šolo') + '</h3>' +
       '<div class="polje"><label>Naziv šole</label><input id="f-sola-ime" value="' + esc(sola ? sola.name : '') + '"></div>' +
-      '<div class="polje"><label>E-poštni naslov (Arnes)</label><input id="f-sola-email" value="' + esc(sola ? sola.email : '') + '"></div>' +
+      '<div class="polje"><label>E-poštni naslovi (Arnes)</label><input id="f-sola-email" value="' + esc(sola ? sola.email : '') + '"><small class="namig" style="display:block;color:#7f8c8d;margin-top:2px">Več naslovov ločite z vejico.</small></div>' +
       '<div class="modal-gumbi">' +
         '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
         '<button class="gumb gumb-zelen" onclick="shraniSolo(' + (id || 'null') + ')">Shrani</button>' +

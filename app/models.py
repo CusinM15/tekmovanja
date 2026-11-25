@@ -9,7 +9,8 @@ tanki in da se vsi objekti obnašajo enako (enaki gumbi, enaka pravila).
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+import re
+from typing import Optional, List
 
 from sqlalchemy import (
     Column, Integer, String, Text, Float, DateTime, Boolean,
@@ -89,6 +90,18 @@ class Pupil(Base):
         return f"<Pupil {self.id}: {self.first_name} {self.last_name}, {self.grade} {self.gender}>"
 
 
+def parse_email_list(raw) -> List[str]:
+    """Razdeli polje z več e-poštnimi naslovi (ločeni z vejico/podpičjem/presledki/novo vrstico)."""
+    if not raw:
+        return []
+    seen: List[str] = []
+    for part in re.split(r"[,;\s]+", str(raw)):
+        p = part.strip().rstrip(",").strip().lower()
+        if p and p not in seen:
+            seen.append(p)
+    return seen
+
+
 class School(Base):
     """School information."""
 
@@ -121,8 +134,12 @@ class School(Base):
     def validate(name, email) -> Optional[str]:
         if not name or len(name.strip()) == 0:
             return "Naziv šole je obvezen."
-        if not email or "@" not in email:
-            return "E-poštni naslov ni veljaven (manjka @)."
+        ems = parse_email_list(email)
+        if not ems:
+            return "Vnesite vsaj en e-poštni naslov."
+        for e in ems:
+            if "@" not in e or "." not in e.split("@")[-1]:
+                return f"E-poštni naslov ni veljaven: {e}"
         return None
 
     def __repr__(self):

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     School, SchoolStatus, Discipline, Pupil, CompetitionEvent,
-    Record, StartList,
+    Record, StartList, parse_email_list,
 )
 
 
@@ -130,11 +130,11 @@ class SchoolService:
     @staticmethod
     def create(db: Session, name: str, email: str) -> dict:
         name = name.strip()
-        email = email.strip()
         err = School.validate(name, email)
         if err:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail=err)
+        email = ", ".join(parse_email_list(email))
         existing = db.query(School).filter((School.name == name), (School.email == email)).first()
         if existing:
             from fastapi import HTTPException
@@ -156,7 +156,7 @@ class SchoolService:
             err = School.validate(school.name, email)
             if err:
                 raise HTTPException(status_code=400, detail=err)
-            school.email = email.strip()
+            school.email = ", ".join(parse_email_list(email))
         if status:
             if status not in (SchoolStatus.ACTIVE.value, SchoolStatus.INACTIVE.value):
                 raise HTTPException(status_code=400, detail="Status mora biti 'active' ali 'inactive'.")
