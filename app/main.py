@@ -688,7 +688,17 @@ async def record_csv_import(
     def norm_sport(nm):
         return re.sub(r"[\s]*[♂♀]\s*$", "", (nm or "").strip()).strip().lower()
 
-    disc_by_norm = {norm_sport(d.name): d for d in db.query(Discipline).all()}
+    vse_disc = db.query(Discipline).all()
+    def poisci_disc(norm, gnorm):
+        # Najprej po športu; potem po spolu (da se rekord M ne napiše v žensko disciplino).
+        match = [d for d in vse_disc if norm_sport(d.name) == norm]
+        if not match:
+            return None
+        for pref in (gnorm, ""):
+            for d in match:
+                if (d.gender or "") == pref:
+                    return d
+        return match[0]
     created, skipped = 0, 0
     errors = []
     for row in rows[header_idx + 1:]:
@@ -702,8 +712,13 @@ async def record_csv_import(
         sport_raw, leto, ucenec, sola, razred, spol = (
             cells[0], cells[1], cells[2], cells[3], cells[4], cells[5])
         cas = cells[6]
+        gspol = (spol or "").strip().upper()
+        if gspol == "Z":
+            gspol = "Ž"
+        gnorm = gspol if gspol in ("M", "Ž") else ""
 
-        disc = disc_by_norm.get(norm_sport(sport_raw))
+        # disciplina po športu IN spolu (da se rekord M ne napiše v žensko disciplino)
+        disc = poisci_disc(norm_sport(sport_raw), gnorm)
         if not disc:
             errors.append(f"neznana disciplina: {sport_raw}")
             continue
@@ -756,13 +771,22 @@ async def record_csv_import(
             except ValueError:
                 errors.append(f"neveljavno leto (LLLL): {leto}")
                 continue
-        # preskoči podvojitve (ista disciplina + učenec + čas) — isti učenec ima tudi
-        # isti spol+razred, zato dva RAZLIČNA rekorderja z istim časom ostaneta oba.
-        exists = db.query(Record).filter(
-            Record.discipline_id == disc.id,
-            Record.pupil_id == pupil.id,
-            Record.time == t,
-        ).first()
+        # preskoči podvojitve: isti učenec + disciplina + ISTO LETO
+        # (spol+razred sta del učenca; dva različna rekorderja z istim časom ostaneta oba;
+        # rekord istega učenca v drugem letu se NE šteje za podvojenega)
+        if leto.strip():
+            yr = int(leto)
+            exists = db.query(Record).filter(
+                Record.discipline_id == disc.id,
+                Record.pupil_id == pupil.id,
+                Record.date_recorded >= datetime(yr, 1, 1),
+                Record.date_recorded < datetime(yr + 1, 1, 1),
+            ).first()
+        else:
+            exists = db.query(Record).filter(
+                Record.discipline_id == disc.id,
+                Record.pupil_id == pupil.id,
+            ).first()
         if exists:
             skipped += 1
             continue

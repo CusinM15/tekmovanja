@@ -636,7 +636,7 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     sola = u.get("school_name") or ""
     csv_content = (
         "Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat\n"
-        f"tek 60m,2026,{u['first_name']} {u['last_name']},{sola},{u['grade']},{u['gender']},10.47\n"
+        f"tek 60m,2011,{u['first_name']} {u['last_name']},{sola},{u['grade']},{u['gender']},10.47\n"
     )
     def _uvoz():
         return client.post("/records/csv-import",
@@ -657,7 +657,7 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     ex = client.get("/records/csv-export")
     assert ex.status_code == 200
     assert ex.content[:3] == b"\xef\xbb\xbf", "izvoz mora imeti UTF-8 BOM"
-    assert "tek 60m" in ex.text and "2026" in ex.text and u["last_name"] in ex.text
+    assert "tek 60m" in ex.text and "2011" in ex.text and u["last_name"] in ex.text
     assert "10.47" in ex.text  # decimalna pika, ne vejica
 
     # neznana disciplina -> podana kot napaka, ok=False
