@@ -323,10 +323,10 @@ function esc(s){
 }
 
 function enotaZaDisciplino(ime){
-  // skok v daljino in met vorteksa → cm, vse ostalo → s
+  // met vorteksa → m, skok v daljino → cm, vse ostalo → s
   var n = (ime || '').replace('♂','').replace('♀','').toLowerCase();
+  if (n.indexOf('met vorteksa') !== -1) return 'm';
   if (n.indexOf('skok v daljino') !== -1) return 'cm';
-  if (n.indexOf('vorteksa') !== -1) return 'cm';
   return 's';
 }
 
@@ -1166,7 +1166,7 @@ function natovoriRekorde(){
         '<td>' + esc(r.discipline_name || '—') + '</td>' +
         '<td>' + esc(r.school_name || '—') + '</td>' +
         '<td><strong>' + casLepo(r.time, r.discipline_name) + '</strong></td>' +
-        '<td>' + datumLepo(r.date_recorded) + '</td>' +
+        '<td>' + (r.date_recorded ? new Date(r.date_recorded).getFullYear() : '—') + '</td>' +
         '<td style="text-align:right;white-space:nowrap">' +
           '<span class="povezava" onclick="odpriModalRekord(' + r.id + ')">✏️ Uredi</span>' +
           '<span class="povezava rdeca" onclick="izbrisiRekord(' + r.id + ')">🗑️ Izbriši</span>' +

@@ -756,7 +756,8 @@ async def record_csv_import(
             except ValueError:
                 errors.append(f"neveljavno leto (LLLL): {leto}")
                 continue
-        # preskoči podvojitve (ista disciplina + učenec + čas)
+        # preskoči podvojitve (ista disciplina + učenec + čas) — isti učenec ima tudi
+        # isti spol+razred, zato dva RAZLIČNA rekorderja z istim časom ostaneta oba.
         exists = db.query(Record).filter(
             Record.discipline_id == disc.id,
             Record.pupil_id == pupil.id,
