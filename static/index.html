@@ -51,6 +51,14 @@
   .kartica.zelena{background:var(--zelen-svetla);} .kartica.zelena .stevilo{color:var(--zelen);}
   .kartica.orange{background:var(--oranzna-svetla);} .kartica.orange .stevilo{color:var(--oranzna);}
   .kartica.rdeca{background:var(--rdeca-svetla);} .kartica.rdeca .stevilo{color:var(--rdeca);}
+  /* Rezultati — vrstice kart po spolu: ženske (roza) prve, nato moški (modro). */
+  #rz-kartice{display:block;}
+  .kartica-vrstica{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:14px;max-width:700px;}
+  .kartica-vrstica .kartica.sam{grid-column:1 / -1;}
+  .kartica.zenske{background:#ffe4ea;}
+  .kartica.zenske .razred strong{color:#d6336c;}
+  .kartica.moski{background:#d6e7ff;}
+  .kartica.moski .razred strong{color:#1d5fc9;}
   .prazno{color:var(--siva);font-style:italic;padding:16px 0;}
   .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:600;}
   .badge-zelena{background:var(--zelen-svetla);color:var(--zelen);}
@@ -919,38 +927,62 @@ function natovoriTockeSole(){
 }
 
 function izrisiKarticeRezultati(disc, ucenci){
-  // ENA kartica na vsako UNIKATNO disciplino (ne 2 — fantje/dekleta so znotraj
-  // detajla, ki klik pokaže vse 4 skupine: 2.r/3.r x fantje/dekleta).
-  disc = unikatneDiscipline(disc);
+  // Vsak šport (skupina disciplin z istim imenom) dobi SVOJO VRSTICO z dvema
+  // karticama: najprej ŽENSKE (roza), nato MOŠKI (modro). Nevtralna disciplina
+  // prikaže oba; spolno omejena le svojega.
+  var spletSportov = [];
+  var seenSport = {};
+  for (var i = 0; i < (disc || []).length; i++){
+    var d = disc[i];
+    var k = String(d.name || '').toLowerCase().replace(/[♂♀][\s]*$/g, '').replace(/\s+/g, ' ').trim();
+    if (seenSport[k]) continue;
+    seenSport[k] = true;
+    var sprejmi = { M: true, Ž: true };   // nevtralen šport -> oba spola
+    if (d.gender === 'M') sprejmi = { M: true, Ž: false };
+    else if (d.gender === 'Ž') sprejmi = { M: false, Ž: true };
+    spletSportov.push({ d: d, sprejmi: sprejmi });
+  }
   var ucm = {};
   for (var ui = 0; ui < ucenci.length; ui++) ucm[ucenci[ui].id] = ucenci[ui];
-  var kartice = '';
-  for (var i = 0; i < disc.length; i++){
-    var d = disc[i];
+  var vrste = '';
+  for (var s = 0; s < spletSportov.length; s++){
+    var d = spletSportov[s].d, sprejmi = spletSportov[s].sprejmi;
     var deli = (d.applicable_grades || '').split(',');
     var veljavni = {};
     for (var ri = 0; ri < deli.length; ri++) veljavni[deli[ri].trim()] = true;
-    // N = vsi učenci tega razreda, ki spadajo pod disciplino (nevtralni -> oba spola).
-    var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', null) : 0;
-    var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', null) : 0;
-    // x = koliko RAZLIČNIH učencev tega razreda (kateri koli spol) že ima rezultat.
-    var zRez2 = {}, zRez3 = {};
-    for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
-      var e = REZULTATI_DOGODKI[j];
-      if (e.discipline_id !== d.id) continue;
-      if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
-      else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
-    }
-    var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
     var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').trim();
-    // Ikona spola na kartici: M → ♂, Ž → ♀, nevtralna (oba spola) → ♂♀.
-    var ikonaSpol = d.gender === 'M' ? '♂ ' : (d.gender === 'Ž' ? '♀ ' : '♂♀ ');
-    kartice += '<div class="kartica" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ')">' +
-        '<div class="ime">' + esc(ikonaSpol + imeK) + '</div>' +
-        '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
-        '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
+    // Ženske prve, nato moški.
+    var mozni = sprejmi.Ž ? ['Ž'] : [];
+    if (sprejmi.M) mozni.push('M');
+    var karticeVrstice = '';
+    for (var gI = 0; gI < mozni.length; gI++){
+      var gender = mozni[gI];
+      var jeMor = gender === 'M';
+      var ikon = jeMor ? '♂' : '♀';
+      // N = samo učenci tega spola v razredu, ki spadajo pod disciplino.
+      var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', gender) : 0;
+      var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', gender) : 0;
+      // x = koliko RAZLIČNIH učencev tega spola v razredu že ima rezultat.
+      var zRez2 = {}, zRez3 = {};
+      for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+        var e = REZULTATI_DOGODKI[j];
+        if (e.discipline_id !== d.id) continue;
+        var usp = ucm[e.pupil_id];
+        if (!usp || (usp.gender || '').toUpperCase() !== gender) continue;
+        if (e.pupil_grade === '2.r') zRez2[e.pupil_id] = true;
+        else if (e.pupil_grade === '3.r') zRez3[e.pupil_id] = true;
+      }
+      var x2 = Object.keys(zRez2).length, x3 = Object.keys(zRez3).length;
+      var cls = 'kartica ' + (jeMor ? 'moski' : 'zenske');
+      if (mozni.length === 1) cls += ' sam';
+      karticeVrstice += '<div class="' + cls + '" style="cursor:pointer" onclick="prikaziRezultateDiscipline(' + d.id + ',\'' + gender + '\')">' +
+          '<div class="ime">' + esc(ikon + ' ' + imeK) + '</div>' +
+          '<div class="razred">2.r: <strong>' + x2 + '</strong>/' + N2 + '</div>' +
+          '<div class="razred">3.r: <strong>' + x3 + '</strong>/' + N3 + '</div></div>';
+    }
+    vrste += '<div class="kartica-vrstica">' + karticeVrstice + '</div>';
   }
-  $('rz-kartice').innerHTML = kartice;
+  $('rz-kartice').innerHTML = vrste;
   $('prazno-rezultati').style.display = disc.length ? 'none' : 'block';
   // Če je odprt podpogled discipline, ga po osvežitvi obdrži (tudi spol)
   if (REZULTATI_AKTIVNA) prikaziRezultateDiscipline(REZULTATI_AKTIVNA.id, REZULTATI_AKTIVNA.spol);
