@@ -718,12 +718,24 @@ async def record_csv_import(
         if grit:
             q = q.filter(Pupil.grade == grit)
         gspol = (spol or "").strip().upper()
+        if gspol == "Z":
+            gspol = "Ž"
         if gspol in ("M", "Ž"):
             q = q.filter(Pupil.gender == gspol)
         pupil = q.first()
         if not pupil:
-            errors.append(f"učenec ni najden: {ucenec} (razred {razred})")
-            continue
+            # Učenca v bazi ni — sami ga ustvarimo iz vrstice, da lahko shranimo rekord.
+            osmola = (sola or "").strip()
+            school = db.query(School).filter(School.name.ilike(osmola)).first() if osmola else None
+            gnorm = gspol if gspol in ("M", "Ž") else "M"
+            if school is not None:
+                pupil = Pupil(first_name=ime, last_name=priimek, school_id=school.id,
+                              grade=grit or (razred or "").strip() or "2.r", gender=gnorm)
+                db.add(pupil)
+                db.flush()
+            else:
+                errors.append(f"učenec ni najden: {ucenec} (razred {razred})")
+                continue
         try:
             t = float(cas.replace(",", "."))
         except ValueError:

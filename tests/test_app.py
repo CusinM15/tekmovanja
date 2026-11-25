@@ -669,6 +669,23 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
     assert r3.json()["ok"] is False and len(r3.json()["errors"]) == 1
 
 
+def test_rekordi_uvoz_ustvari_manjkajocega_ucenca(client):
+    """Če učenca (ime+priimek+razred+spol) v bazi ni, ga uvoz samodejno USTVARI iz vrstice
+    (poveže na šolo po imenu) in shrani rekord — namesto napake 'učenec ni najden'."""
+    sola = client.get("/schools").json()[0]
+    csv_txt = ("Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat\n"
+               f"tek 60m,2026,Tadej Neimenovani,{sola['name']},2.r,M,10.47\n")
+    b = client.post("/records/csv-import",
+                    files={"file": ("r.csv", csv_txt.encode("utf-8"), "text/csv")}).json()
+    assert b["ok"] is True and b["created"] >= 1, b
+    # učenec zdaj obstaja, povezan na šolo
+    uc = [p for p in client.get("/pupils").json()
+          if p["first_name"] == "Tadej" and p["last_name"] == "Neimenovani"]
+    assert uc, "učenec ni bil samodejno ustvarjen"
+    assert uc[0]["grade"] == "2.r" and uc[0].get("gender") == "M"
+    assert uc[0].get("school_name") == sola["name"]
+
+
 def test_rekordi_predloga_discipline_le_enkrat():
     """V »Discipline:« seznamu predloge je vsaka disciplina ENKRAT, brez ikon ♂/♀
     in brez gender-sufiksa (M/Ž), v stabilnem standardnem vrstnem redu
