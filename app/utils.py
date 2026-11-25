@@ -60,17 +60,25 @@ def _brez_ikone(name):
 
 def records_csv_template(disciplines) -> str:
     """Prazna CSV predloga za uvod rekordov (najboljših rezultatov)."""
-    # Vsako disciplino le ENKRAT (v bazi sta par ♂/♀, ki se po odstranitvi ikone podvaja).
+    # Vsako disciplino le ENKRAT, v STABILNEM standardnem vrstnem redu
+    # (tek 60m, tek 400m, skok v daljino, met vorteksa). Disciplino kanoniziramo
+    # na osnovni šport: "tek 60m ♂"/"tek 60m ♀"/"tek 60m M"/"tek 60m Ž" -> "tek 60m",
+    # da se par iz baze ne podvaja in "tek 60m" ostane vedno 1.
+    base_order = ["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"]
     seen = set()
     uniq = []
     for d in disciplines:
         base = _brez_ikone(d.name)
-        key = base.lower()
-        if not base or key in seen:
+        low = base.lower()
+        canon = next((b for b in base_order if low.startswith(b)), None)
+        key = canon if canon else low
+        if not key or key in seen:
             continue
         seen.add(key)
-        uniq.append(f"{len(uniq) + 1}. {base}")
-    disc_lines = "\n".join(uniq)
+        uniq.append(canon if canon else base)
+    uniq.sort(key=lambda n: (base_order.index(n.lower())
+                             if n.lower() in base_order else len(base_order)))
+    disc_lines = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(uniq))
     content_whole = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
         "1. Vsaka vrstica pomeni EN najboljši rezultat (rekord).\n"

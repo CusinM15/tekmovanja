@@ -671,20 +671,22 @@ def test_rekordi_csv_uvoz_izvoz_predloga(client):
 
 def test_rekordi_predloga_discipline_le_enkrat():
     """V »Discipline:« seznamu predloge je vsaka disciplina ENKRAT, brez ikon ♂/♀
-    (v bazi sta par ♂/♀, ki se po odstranitvi ikone ne sme podvajati)."""
+    in brez gender-sufiksa (M/Ž), v stabilnem standardnem vrstnem redu
+    ("tek 60m ♂/♀/M/Ž" -> "tek 60m", torej vedno 1.)."""
     from types import SimpleNamespace
     from app.utils import records_csv_template
     disc = [
         SimpleNamespace(id=1, name="tek 60m ♂"),
         SimpleNamespace(id=2, name="tek 60m ♀"),
-        SimpleNamespace(id=3, name="tek 400m ♂"),
-        SimpleNamespace(id=4, name="tek 400m ♀"),
+        SimpleNamespace(id=3, name="tek 400m M"),   # sufix črka, ne ikona
+        SimpleNamespace(id=4, name="tek 400m Ž"),
+        SimpleNamespace(id=5, name="tek 60m ♂"),
     ]
     txt = records_csv_template(disc).lstrip("\ufeff")
     lines = txt.splitlines()
     d0 = next(i for i, l in enumerate(lines) if l.strip() == "Discipline:")
     d1 = next(i for i, l in enumerate(lines) if l.startswith("Disciplina,"))
     leg = [l for l in lines[d0 + 1:d1] if l.strip()]
-    assert len(leg) == 2, leg
+    assert len(leg) == 2, leg                       # samo tek 60m + tek 400m, enkrat
     assert leg == ["1. tek 60m", "2. tek 400m"], leg
-    assert all("♂" not in l and "♀" not in l for l in leg)
+    assert all("♂" not in l and "♀" not in l and "M" not in l.split(".")[1] for l in leg)
