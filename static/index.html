@@ -260,10 +260,10 @@
     <h2>Uvoz podatkov in pošiljanje</h2>
     <p class="opis">Uvozite učence iz CSV datoteke ali pošljite povabila in rezultate šolam.</p>
 
-    <div class="info">💡 <strong>Uvoz CSV:</strong> šolam pošljete predlogo, one jo izpolnijo in vrnejo, vi pa datoteko uvozite tukaj.</div>
+    <div class="info">💡 <strong>Uvoz učencev (Excel/CSV):</strong> šolam pošljete Excel predlogo, one jo izpolnijo v Excelu in vrnejo, vi pa datoteko uvozite tukaj.</div>
     <div class="vrstica-gumbov">
-      <button class="gumb gumb-moder" onclick="prenesiPredlogaCsv()">📥 Prenesi prazno predlogo (CSV)</button>
-      <button class="gumb gumb-zelen" onclick="odpriModalUvozCsv()">📄 Uvozi izpolnjeno CSV</button>
+      <button class="gumb gumb-moder" onclick="prenesiPredlogaCsv()">📥 Prenesi prazno predlogo (Excel)</button>
+      <button class="gumb gumb-zelen" onclick="odpriModalUvozCsv()">📄 Uvozi izpolnjeno datoteko</button>
       <button class="gumb gumb-orange" onclick="posljiVabila()">✉️ Pošlji povabila šolam</button>
       <button class="gumb gumb-orange" onclick="posljiRezultate()">✉️ Pošlji rezultate šolam</button>
       <button class="gumb gumb-moder" onclick="odpriModalSmtp()">⚙️ Nastavitve e-pošte</button>
@@ -1309,15 +1309,15 @@ function izbrisiStartno(id){
 /* ================= CSV / POŠTA / SMTP ================= */
 function prenesiPredlogaCsv(){
   // Download prek server endpointa — v LibreWolfu/Firefoxu je to zanesljivejše
-  // kot Blob + a.click(), ki ga Firefox tiho ignorira.
-  window.location.href = '/csv-template';
+  // kot Blob + a.click(), ki ga Firefox tiho ignorira. Šole dobijo Excel (.xlsx).
+  window.location.href = '/xlsx-template';
 }
 
 function odpriModalUvozCsv(){
   $('modal-vsebina').innerHTML =
-    '<h3>📄 Uvoz učencev iz CSV</h3>' +
-    '<div class="info">Izberite izpolnjeno CSV datoteko, ki so jo vrnile šole — ali pa prilepite njeno vsebino (Ctrl+A → Ctrl+V). Stolpci: Ime, Priimek, Razred, Spol, Discipline (ID iz tabele v predlogi).</div>' +
-    '<div class="polje"><label>CSV datoteka</label><input id="f-csv" type="file" accept=".csv,text/csv"></div>' +
+    '<h3>📄 Uvoz učencev (Excel ali CSV)</h3>' +
+    '<div class="info">Izberite izpolnjeno Excel datoteko (.xlsx) ali CSV, ki so jo vrnile šole — ali pa prilepite vsebino CSV (Ctrl+A → Ctrl+V). Stolpci: Ime, Priimek, Razred, Spol, Discipline (ID iz razpredelnice v predlogi).</div>' +
+    '<div class="polje"><label>Excel (.xlsx) ali CSV datoteka</label><input id="f-csv" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></div>' +
     '<div class="polje"><label>…ali prilepi vsebino CSV</label><textarea id="f-csv-besedilo" rows="6" style="width:100%;font-family:monospace;font-size:13px;box-sizing:border-box" placeholder="Prilepi vsebino CSV predloge s podatki učencev…"></textarea></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -1345,10 +1345,13 @@ function uvoziCsvIzBesedila(){
 
 function uvoziCsv(){
   var input = $('f-csv');
-  if (!input.files || !input.files[0]){ toast('Izberite CSV datoteko.', 'napaka'); return; }
+  if (!input.files || !input.files[0]){ toast('Izberite Excel (.xlsx) ali CSV datoteko.', 'napaka'); return; }
+  var f = input.files[0];
+  var ime = (f.name || '').toLowerCase();
+  var ep = ime.endsWith('.xlsx') ? '/import-xlsx' : '/import-csv';
   var fd = new FormData();
-  fd.append('file', input.files[0]);
-  api('/import-csv', 'POST', fd).then(function(r){
+  fd.append('file', f);
+  api(ep, 'POST', fd).then(function(r){
     var sp = r.status === 'error' ? 'napaka' : 'ok';
     var besedilo = r.message || '';
     if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';

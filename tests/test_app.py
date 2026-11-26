@@ -347,6 +347,32 @@ def test_uvoz_slovenska_glava(client):
     assert j["records_created"] == 1 and j["start_entries"] == 2, j
 
 
+def test_uvoz_xlsx_izpolnjena(client):
+    """UVOZ PRAVEGA EXCELA (.xlsx): šola vrne izpolnjeno predlogo -> /import-xlsx uvozi.
+    (round-trip: _xlsx_bytes -> odpri s openpyxl -> vpiši učenca -> pošlji nazaj)"""
+    from openpyxl import load_workbook
+    from io import BytesIO
+    import app.main as M
+    b = M._xlsx_bytes("OŠ Tone Čufar")
+    wb = load_workbook(BytesIO(b))
+    ws = wb.active
+    ws["A6"] = "Ana"; ws["B6"] = "Novak"; ws["C6"] = 2; ws["D6"] = "M"; ws["E6"] = "1 2"
+    buf = BytesIO(); wb.save(buf)
+    j = client.post("/import-xlsx",
+                    files={"file": ("vrnjen.xlsx", buf.getvalue(),
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}).json()
+    assert j["status"] == "success", j
+    assert j["records_created"] == 1 and j["start_entries"] == 2, j
+
+
+def test_xlsx_template_prenos(client):
+    """XLSX TEMPLATE: /xlsx-template vrne pravi .xlsx (PK zip, %-headerji openpyxl)."""
+    r = client.get("/xlsx-template")
+    assert r.status_code == 200
+    assert r.content[:2] == b"PK", "xlsx mora biti ZIP (PK)"
+    assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in r.headers.get("content-type", "")
+
+
 def test_uvoz_vecih_disciplin_brez_narekovajev(client):
     """'1,2,4' BREZ narekovajev csv razbije na več celic — uvoz mora vseeno
     prebrati VSE discipline (združi celice od Discipline naprej), ne samo prve."""

@@ -932,6 +932,62 @@ def _csv_template(school_name=None):
             prazne)
 
 
+def _xlsx_bytes(school_name=None) -> bytes:
+    """PRAVI Excel (.xlsx) predloga za vnos učencev — šole uredijo tabelo kakor
+    so vajeni v Excelu (izbirnika Razred 2/3 in Spol M/Ž, obrobe, zamrznjena glava).
+    Vrne bajte .xlsx. Ime šole se vpiše enkrat (A2)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from io import BytesIO
+
+    sola = school_name or "<ime svoje šole>"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Prijava učencev"
+
+    bold = Font(bold=True)
+    thin = Side(style="thin", color="BBBBBB")
+    border = Border(top=thin, bottom=thin, left=thin, right=thin)
+    hl = PatternFill("solid", fgColor="DDEBF7")
+
+    ws["A1"] = "ŠOLA"
+    ws["B1"] = sola
+    ws["A1"].font = bold
+    ws["B1"].font = bold
+
+    ws["A3"] = "Discipline (ID):  1 = tek 60m | 2 = tek 400m | 3 = skok v daljino | 4 = met vorteksa"
+    ws["A3"].font = Font(italic=True, color="555555")
+
+    headers = ["Ime", "Priimek", "Razred", "Spol", "Discipline (ID)"]
+    HR = 5
+    for j, h in enumerate(headers, start=1):
+        c = ws.cell(row=HR, column=j, value=h)
+        c.font = bold
+        c.fill = hl
+        c.border = border
+        c.alignment = Alignment(horizontal="center")
+
+    for i in range(HR + 1, HR + 1 + 30):
+        for j in range(1, 6):
+            ws.cell(row=i, column=j).border = border
+
+    dv_razred = DataValidation(type="list", formula1='"2,3"', allow_blank=True)
+    dv_spol = DataValidation(type="list", formula1='"M,Ž"', allow_blank=True)
+    ws.add_data_validation(dv_razred)
+    ws.add_data_validation(dv_spol)
+    dv_razred.add(f"C{HR + 1}:C{HR + 30}")
+    dv_spol.add(f"D{HR + 1}:D{HR + 30}")
+
+    ws.freeze_panes = f"A{HR + 1}"
+    for col, w in zip("ABCDE", [20, 20, 10, 10, 18]):
+        ws.column_dimensions[col].width = w
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # 4 discipline = 4 športi (ID 1-4); spol+razred iz vrstice določita tekmovalno
 # skupino (šport × spol × razred). CSV v stolpec Discipline navaja ID-je (1-4).
 DEFAULT_DISCIPLINE_ORDER = ["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"]
@@ -1004,6 +1060,18 @@ def csv_template_download():
     )
 
 
+@app.get("/xlsx-template", summary="Prenesi Excel predlogo (.xlsx) za šole")
+def xlsx_template_download():
+    """Vrne pravi Excel (.xlsx) predlogo za šole kot prenos (attachment) — šole jo
+    izpolnijo kakor so vajeni v Excelu (tabela z izbirnikoma Razred/Spol)."""
+    from fastapi.responses import Response
+    return Response(
+        content=_xlsx_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="predloga_ucencev.xlsx"'},
+    )
+
+
 @app.post("/send-emails", response_model=dict, summary="Send invitations to active schools")
 def send_invitations_emails(db=Depends(get_db)):
     """Send email invitations to all active schools. Vsaka šola dobi SVOJO CSV
@@ -1045,25 +1113,26 @@ def send_invitations_emails(db=Depends(get_db)):
         if not rec:
             napake.append(f"{s.name}: ni e-poštnega naslova")
             continue
-        # vsaka šola svojo predlogo z že izpolnjenim imenom svoje šole
-        csv_content = _csv_template(s.name)
-        atts = [("prijava_ucencev.csv", csv_content, "text/csv")]
+        # vsaka šola svojo predlogo z že izpolnjenim imenom svoje šole (pravi Excel)
+        xlsx_content = _xlsx_bytes(s.name)
+        atts = [("prijava_ucencev.xlsx", xlsx_content,
+                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
         if razpis_priloga:
             atts.append(razpis_priloga)
         body = ("Pozdravljeni,\n\n"
                 "vabimo vas k prijavi učencev na Stankov memorial.\n\n"
-                "V prilogi je CSV predloga. Odprite jo v Excelu — v prvi vrstici (»ŠOLA«) "
-                "je že izpolnjeno ime vaše šole. Svojega ne spreminjajte, razen če je ime "
-                "šole napačno.\n\n"
-                "V tabelo pod glavo (Ime;Priimek;Razred;Spol;Discipline (ID)) vnesite za "
-                "vsakega učenca ENO vrstico:\n"
+                "V prilogi je Excel predloga (prijava_ucencev.xlsx). Odprite jo v Excelu — "
+                "v prvi vrstici (»ŠOLA«) je že izpolnjeno ime vaše šole. Svojega ne "
+                "spreminjajte, razen če je ime šole napačno.\n\n"
+                "V Excel tabeli (stolpci Ime, Priimek, Razred, Spol, Discipline (ID)) vnesite "
+                "za vsakega učenca ENO vrstico:\n"
                 "- Ime in priimek (npr. Ana Novak)\n"
                 "- Razred: samo 2 ali 3 (brez .r)\n"
                 "- Spol: M (fant) ali Ž (punca)\n"
-                "- Discipline: ID-ji iz tabele v datoteki (1 = tek 60m, 2 = tek 400m, "
-                "3 = skok v daljino, 4 = met vorteksa), ločeni s presledkom (npr. 1 2 4). "
+                "- Discipline: ID-ji iz razpredelnice zgoraj (1 = tek 60m, 2 = tek 400m, "
+                "3 = skok v daljino, 4 = met vorteksa), ločeni s presledkom (npr. 1 2). "
                 "Vsak učenec naj nastopa v NAJVEČ 2 disciplinah.\n\n"
-                "Ne spreminjajte glave ali legende. Shranite datoteko (ostane .csv) in jo "
+                "Ne spreminjajte glave. Shranite datoteko (prijava_ucencev.xlsx) in jo "
                 "vrnite organizatorju.\n\n"
                 "V prilogi je tudi razpis tekmovanja.\n\n"
                 "Hvala in lep pozdrav,\n" + _posiljatelj_ime())
@@ -1171,29 +1240,11 @@ def _detect_delimiter(text: str) -> str:
     return ","
 
 
-@app.post("/import-csv", response_model=dict, summary="Import completed CSV")
-async def import_csv(
-    file: UploadFile = Form(...),
-    db=Depends(get_db)
-):
-    """Import CSV file with competition data. Validates and prevents duplicates."""
-    # Brskalniki pošljejo text/csv; Excel/Windows včasih druge MIME tipe — sprejmi vse običajne
-    if file.content_type not in ("text/csv", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="Datoteka ni CSV (content-type: {})".format(file.content_type))
-    
-    # Read file content
-    content = await file.read()
-    text = content.decode("utf-8", errors="replace")
-    
-    # Parse CSV
-    import csv
-    from io import StringIO
-    
-    # Parse the CSV content — ločilo prepoznamo (Slovenski Excel uporablja podpičje ';')
-    delim = _detect_delimiter(text)
-    reader = csv.reader(StringIO(text), delimiter=delim)
-    rows = list(reader)
-    
+def _import_rows(rows, db, text=None):
+    """Deljeno jedro uvoza UČENCEV iz vrstic (CSV ali .xlsx): prepozna glavo,
+    polje »ŠOLA«, stolpce (ime/priimek/razred/spol/discipline) in vstavi učence
+    ter štartne liste v ENI transakciji. `text` je surov CSV-tekst (rabljen samo
+    za fallback, ko so izgubljena ločila); pri .xlsx je None."""
     if not rows or len(rows) < 1:
         raise HTTPException(status_code=400, detail="Empty CSV file")
     
@@ -1448,6 +1499,60 @@ async def import_csv(
         "start_lists_created": start_lists_created,
         "message": f"Uvoženih {len(records)} učencev, dodanih {start_entries} nastopov ({start_lists_created} novih štartnih list)."
     }
+
+
+
+@app.post("/import-csv", response_model=dict, summary="Import completed CSV")
+async def import_csv(
+    file: UploadFile = Form(...),
+    db=Depends(get_db)
+):
+    """Import CSV file with competition data. Validates and prevents duplicates."""
+    # Brskalniki pošljejo text/csv; Excel/Windows včasih druge MIME tipe — sprejmi vse običajne
+    if file.content_type not in ("text/csv", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Datoteka ni CSV (content-type: {})".format(file.content_type))
+    
+    # Read file content
+    content = await file.read()
+    text = content.decode("utf-8", errors="replace")
+    
+    # Parse CSV
+    import csv
+    from io import StringIO
+    
+    # Parse the CSV content — ločilo prepoznamo (Slovenski Excel uporablja podpičje ';')
+    delim = _detect_delimiter(text)
+    reader = csv.reader(StringIO(text), delimiter=delim)
+    rows = list(reader)
+    
+    return _import_rows(rows, db, text)
+
+
+@app.post("/import-xlsx", response_model=dict, summary="Import completed/returned Excel (.xlsx)")
+async def import_xlsx(file: UploadFile = Form(...), db=Depends(get_db)):
+    """Uvoz PRAVEGA Excela (.xlsx), ki ga šole vrnejo izpolnjenega. Prebere list,
+    zgradi vrstice in jih poda v skupno jedro (_import_rows), kot /import-csv."""
+    from openpyxl import load_workbook
+    from io import BytesIO
+
+    allowed = ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+               "application/octet-stream", "application/x-www-form-urlencoded",
+               "application/vnd.ms-excel", "application/zip")
+    if file.content_type and file.content_type not in allowed:
+        raise HTTPException(status_code=400,
+                            detail="Datoteka ni Excel .xlsx (content-type: {})".format(file.content_type))
+    content = await file.read()
+    try:
+        wb = load_workbook(BytesIO(content), data_only=True)
+    except Exception as e:  # openpyxl ne more prebrati -> ni .xlsx
+        raise HTTPException(status_code=400, detail="Datoteka ni veljaven Excel (.xlsx): {}".format(e))
+    ws = wb.active
+    rows = [["" if v is None else str(v) for v in row]
+            for row in ws.iter_rows(values_only=True)]
+    if not rows:
+        raise HTTPException(status_code=400, detail="Excel datoteka je prazna")
+    return _import_rows(rows, db, None)
+
 
 # === RESULTS PDF ===
 
