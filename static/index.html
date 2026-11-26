@@ -244,9 +244,9 @@
   <!-- ============ ŠTARTNE LISTE ============ -->
   <section class="stran" id="stran-startne">
     <h2>Štartne liste</h2>
-    <p class="opis">Ustvarite štartno listo za disciplino, razred in datum.</p>
+    <p class="opis">Po uvozu vseh podatkov kliknite gumb in iz vpisanih disciplin nastane vseh 16 štartnih list (4 discipline × 2 razreda × 2 spola).</p>
     <div class="vrstica-gumbov">
-      <button class="gumb gumb-zelen" onclick="odpriModalStartna()">＋ Nova štartna lista</button>
+      <button class="gumb gumb-zelen" onclick="ustvariStartneListe()">🔄 Ustvari štartne liste (vseh 16)</button>
     </div>
     <table class="sortable">
       <thead><tr><th>Disciplina</th><th>Razred</th><th>Datum</th><th></th></tr></thead>
@@ -1327,41 +1327,11 @@ function natovoriStartne(){
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 
-function odpriModalStartna(){
-  Promise.all([natovoriUcence(), natovoriDiscipline()]).then(function(){
-    var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '">' + esc(d.name) + '</option>'; }).join('');
-    $('modal-vsebina').innerHTML =
-      '<h3>＋ Nova štartna lista</h3>' +
-      '<div class="polje"><label>Disciplina</label><select id="f-s-disciplina">' + opcijeD + '</select></div>' +
-      '<div class="polje"><label>Razred</label><select id="f-s-razred"><option value="2.r">2. razred</option><option value="3.r">3. razred</option></select></div>' +
-      '<div class="polje"><label>Datum</label><input id="f-s-datum" type="date"></div>' +
-      '<div class="polje"><label>Učenci (izberite vse, ki nastopajo)</label><div id="s-ucenci-izbira" style="max-height:220px;overflow-y:auto;border:2px solid #d5dde0;border-radius:9px;padding:10px;">' +
-        VSI_UCENCI.map(function(u){ return '<label style="display:block;padding:4px 0;font-weight:400;font-size:14px;cursor:pointer"><input type="checkbox" class="s-ucenec" value="' + u.id + '"> ' + esc(u.first_name + ' ' + u.last_name + ' (' + (u.school_name || '') + ')') + '</label>'; }).join('') +
-      '</div></div>' +
-      '<div class="modal-gumbi">' +
-        '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-        '<button class="gumb gumb-zelen" onclick="shraniStartno()">Ustvari listo</button>' +
-      '</div>';
-    odpriModal();
-  });
-}
-
-function shraniStartno(){
-  var datum = $('f-s-datum').value;
-  if (!datum){ toast('Izberite datum.', 'napaka'); return; }
-  var izbrani = [];
-  var potrdi = document.querySelectorAll('.s-ucenec:checked');
-  for (var i = 0; i < potrdi.length; i++) izbrani.push(parseInt(potrdi[i].value, 10));
-  if (!izbrani.length){ toast('Izberite vsaj enega učenca.', 'napaka'); return; }
-  var pod = {
-    discipline_id: parseInt($('f-s-disciplina').value, 10),
-    grade: $('f-s-razred').value,
-    event_date: datum + 'T08:00:00',
-    pupil_ids: izbrani
-  };
-  api('/start-lists', 'POST', pod).then(function(){
-    toast('Štartna lista ustvarjena.', 'ok');
-    zapriModal(); natovoriStartne();
+function ustvariStartneListe(){
+  if (!confirm('Iz vpisanih disciplin ustvarim/osvežim vseh 16 štartnih list (4 discipline × 2 razreda × 2 spola)?')) return;
+  api('/start-lists/generate', 'POST').then(function(r){
+    toast(r.message || 'Štartne liste ustvarjene.', r.status === 'error' ? 'napaka' : 'ok');
+    natovoriStartne();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 

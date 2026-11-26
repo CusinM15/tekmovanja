@@ -55,6 +55,7 @@ class Pupil(Base):
     school_id = Column(Integer, ForeignKey("schools.id"), nullable=False, index=True)
     grade = Column(String(20), nullable=False)  # e.g. '2.r' or '3.r'
     gender = Column(String(2), nullable=False)  # 'M' or 'Ž'
+    disciplines = Column(String(50), nullable=False, default="", server_default="")  # vpisane discipline (ID-ji 1-4, npr. '1 2'; največ 2)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -69,6 +70,7 @@ class Pupil(Base):
             "school_name": self.school.name if self.school else None,
             "grade": self.grade,
             "gender": self.gender,
+            "disciplines": self.disciplines or "",
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

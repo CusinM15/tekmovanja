@@ -53,42 +53,35 @@ def get_db(session_locator=get_session):
 
 
 
-def _ensure_start_lists(db):
-    """Nedestruktivno: za vsako disciplino × applicable grade, ki ŠE NIMA štartne
-    liste, jo doda — ampak SAMO z učenci, ki so za TO disciplino dejansko prijavljeni
-    (so v kaki štartni listi discipline ali imajo rezultat), ne z vsemi učenci
-    razreda/spola. Idempotentno (že obstoječe pusti pri miru). Ob zagonu tako doda
-    manjkajoče tudi na obstoječi bazi — brez brisanja podatkov in BREZ tega, da bi
-    se učenec znašel v štartnih listah vseh disciplin, čeprav je vpisan v 2."""
-    discs = db.query(Discipline).all()
-    for d in discs:
-        grades = [g.strip() for g in (d.applicable_grades or "").split(",") if g.strip()]
-        obstoj = {(sl.grade, sl.gender) for sl in db.query(StartList).filter(StartList.discipline_id == d.id).all()}
-        # učenci, ki so za TO disciplino dejansko prijavljeni: v kakšni štartni listi
-        # discipline ali z rezultatom (CompetitionEvent) za njo
-        vpisani = set()
-        for sl0 in db.query(StartList).filter(StartList.discipline_id == d.id).all():
-            for p in sl0.pupils:
-                vpisani.add(p.id)
-        for ev in db.query(CompetitionEvent).filter(CompetitionEvent.discipline_id == d.id).all():
-            if ev.pupil_id:
-                vpisani.add(ev.pupil_id)
-        for grade in grades:
+def _ustvari_startne_liste(db):
+    """Ustvari/osveži VSEH 16 štartnih list (4 discipline × 2 razreda × 2 spola) iz
+    VPISANIH disciplin učencev (Pupil.disciplines, ID-ji 1-4). Za vsako kombinacijo
+    poišče obstoječo listo ali jo ustvari in vanjo vpiše prijavljene učence (prvih 15).
+    Idempotentno: ponovni klik osveži člane. Uvoz sam NE ustvarja štartnih list —
+    to naredi uporabnik z gumbom »Ustvari štartne liste«."""
+    import re as _re
+    # (brez sklica na DEFAULT_DISCIPLINE_ORDER/_disciplina_po_id — seed teče ob
+    # uvozu modula, preden sta definirana; zato imena kar tu)
+    for disc_id, ime in enumerate(["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"], start=1):
+        disc = db.query(Discipline).filter(Discipline.name == ime).first()
+        if disc is None:
+            continue
+        vpisani = {}
+        for p in db.query(Pupil).all():
+            vp = _re.split(r"[,;\s]+", (p.disciplines or "").strip())
+            if str(disc_id) in vp:
+                vpisani.setdefault((p.grade, p.gender), []).append(p)
+        for grade in ("2.r", "3.r"):
             for spol in ("M", "Ž"):
-                if (grade, spol) in obstoj:
-                    continue
-                if not vpisani:
-                    continue
-                kandidati = db.query(Pupil).filter(
-                    Pupil.id.in_(vpisani),
-                    Pupil.gender == spol,
-                    Pupil.grade == grade,
-                ).order_by(Pupil.id).all()
-                if not kandidati:
-                    continue
-                nova = StartList(discipline_id=d.id, grade=grade, gender=spol, event_date=datetime.now())
-                nova.pupils = kandidati[:15]
-                db.add(nova)
+                sl = db.query(StartList).filter(
+                    StartList.discipline_id == disc.id,
+                    StartList.grade == grade,
+                    StartList.gender == spol,
+                ).first()
+                if not sl:
+                    sl = StartList(discipline_id=disc.id, grade=grade, gender=spol, event_date=datetime.now())
+                    db.add(sl)
+                sl.pupils = (vpisani.get((grade, spol)) or [])[:15]
 
 
 
@@ -270,12 +263,20 @@ def _seed_defaults():
                                           notes=f"Rekord tekmovanja ({razred}, {'fantje' if spol == 'M' else 'punce'})"))
             db.commit()
 
-            # Štartne liste za vsako disciplino × razred ustvari _ensure_start_lists spodaj
-            # (do 15 učencev pravega spola/razreda; deluje tudi na obstoječi bazi).
+            # Vsakemu demo učencu vpišemo NJEGOVO disciplino (ID športa njegovega
+            # pasu) — štartne liste nato naredimo z _ustvari_startne_liste (16 list,
+            # iz vpisanih disciplin; uvoz sam NE dela štartnih list).
+            for idx, (disc_ime, disc_id) in enumerate(vse_discipline):
+                for bazen in (ucenci_m, ucenci_z):
+                    for u in bazen[idx * 15: idx * 15 + 15]:
+                        u.disciplines = str(idx + 1)
+            db.commit()
 
-        # Nedestruktivno: na OBSTOJEČI bazi (Windows) doda manjkajoče štartne liste,
-        # da jih uporabnik dobi takoj po `git pull`, brez brisanja podatkov.
-        _ensure_start_lists(db)
+        # POZOR: štartne liste v produkciji ustvari SAMO uporabnik z gumbom
+        # »Ustvari štartne liste« (stran Štartne liste) — uvoz in zagon jih ne
+        # ustvarjata samodejno. Seed (testi) jih ustvari spodaj.
+        if db.query(Pupil).count() and not db.query(StartList).count():
+            _ustvari_startne_liste(db)
         _backfill_record_snapshots(db)
         from app.services import _reassign_all_positions
         _reassign_all_positions(db)
@@ -927,6 +928,18 @@ def list_start_lists(db=Depends(get_db)):
     lists = db.query(StartList).all()
     return [l.to_dict() for l in lists]
 
+
+@app.post("/start-lists/generate", response_model=dict, summary="Ustvari/osveži vseh 16 štartnih list")
+def generate_start_lists(db=Depends(get_db)):
+    """Iz VPISANIH disciplin učencev (Pupil.disciplines) ustvari ali osveži VSEH 16
+    štartnih list (4 discipline × 2 razreda × 2 spola). Uporabnik klikne gumb
+    »Ustvari štartne liste« na strani Štartne liste PO uvozu vseh podatkov."""
+    _ustvari_startne_liste(db)
+    db.commit()
+    n = db.query(StartList).count()
+    return {"status": "success", "start_lists": n,
+            "message": f"Ustvarjenih/osveženih {n} štartnih list (iz vpisanih disciplin)."}
+
 # === SCHOOL INVITATIONS ===
 
 
@@ -1374,11 +1387,9 @@ def _import_rows(rows, db, text=None):
         raise HTTPException(status_code=400, detail="CSV manjka polje »ŠOLA« zgoraj (šola se vpiše enkrat na vrhu).")
 
     import re
-    from datetime import datetime as _dt_now
     errors = []
     records = []
     start_entries = 0
-    start_lists_created = 0
     # Omejitev: vsak učenec nastopa v NAJVEČ 2 disciplina (prvi dve po vrstnem
     # redu v datoteki). Tu štejemo, koliko disciplin že ima vsak učenec; dodatne
     # (3., 4., ...) po uvozu preprosto preskočimo (upoštevamo zgolj prvi dve).
@@ -1499,7 +1510,10 @@ def _import_rows(rows, db, text=None):
             errors.append(f"Vrstica {i}: manjka disciplina — vpiši ID-je (1-4), ločene z vejico npr. 1,2,4.")
             continue
         for disc_id in disc_ids:
-            # vsak učenec naj nastopa v NAJVEČ 2 disciplina — upoštevamo prvi dve
+            # vsak učenec naj nastopa v NAJVEČ 2 disciplina — upoštevamo prvi dve;
+            # idempotentno: če je učenec že vpisan v to disciplino, preskočimo
+            if str(disc_id) in set((pupil.disciplines or "").split()):
+                continue
             sne = st_disc_po_ucencu.setdefault(pupil.id, [])
             if len(sne) >= 2:
                 continue
@@ -1508,19 +1522,16 @@ def _import_rows(rows, db, text=None):
             if disc is None:
                 errors.append(f"Vrstica {i}: neznan ID discipline {disc_id}.")
                 continue
-            sl = db.query(StartList).filter(
-                StartList.discipline_id == disc.id,
-                StartList.grade == grade,
-                StartList.gender == gender,
-            ).order_by(StartList.event_date.desc(), StartList.id.desc()).first()
-            if not sl:
-                sl = StartList(discipline_id=disc.id, grade=grade, gender=gender, event_date=_dt_now.utcnow())
-                db.add(sl)
-                db.flush()
-                start_lists_created += 1
-            if pupil not in sl.pupils:
-                sl.pupils.append(pupil)
-                start_entries += 1
+            start_entries += 1
+
+    # Vpiši discipline učencem (uvoz NE ustvarja štartnih list — to naredi
+    # uporabnik z gumbom »Ustvari štartne liste« po uvozu vseh podatkov).
+    for pid, nove in st_disc_po_ucencu.items():
+        p = db.get(Pupil, pid)
+        if p is None:
+            continue
+        obst = [d for d in (p.disciplines or "").split() if d]
+        p.disciplines = " ".join((obst + [str(d) for d in nove])[:2])
 
     if errors:
         db.rollback()  # sprosti pisalno ključavnico TAKOJ (ne šele po koncu response)
@@ -1531,15 +1542,15 @@ def _import_rows(rows, db, text=None):
             "message": "Uvoz ni uspel: popravite napake in poskusite znova."
         }
 
-    # Commit: učenec + štartne liste + nastopi v eni transakciji
+    # Commit: učenci (štartnih list uvoz NE ustvarja)
     db.commit()
 
     return {
         "status": "success",
         "records_created": len(records),
         "start_entries": start_entries,
-        "start_lists_created": start_lists_created,
-        "message": f"Uvoženih {len(records)} učencev, dodanih {start_entries} nastopov ({start_lists_created} novih štartnih list)."
+        "message": f"Uvoženih {len(records)} učencev, vpisanih {start_entries} nastopov. "
+                   "Štartne liste ustvarite z gumbom »Ustvari štartne liste« na strani Štartne liste."
     }
 
 

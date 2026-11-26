@@ -38,19 +38,14 @@ def _start_lists(client):
     return client.get("/start-lists").json()
 
 
-def _ucenci_po_disciplini_in_razredu(ucenci, disc):
+def _ucenci_po_disciplini_in_razredu(ucenci, disc, startne):
     """Ista logika kot izrisiKarticeRezultati v index.html:
-    N = vsi učenci, ki spadajo pod disciplino (gender=disc.gender in grade ∈ applicable_grades)."""
+    N = učenci, PRIJAVLJENI v štartne liste discipline (po gumbu »Ustvari štartne
+    liste«) — ne vsi učenci razreda/spola."""
     nastopi = {}
-    for d in disc:
-        grades = {g.strip() for g in (d.get("applicable_grades") or "").split(",")}
-        nevtralen = not (d.get("gender") or "")
-        for p in ucenci:
-            if p["grade"] not in grades:
-                continue
-            if (not nevtralen) and p["gender"] != d["gender"]:
-                continue
-            nastopi.setdefault(d["id"], {}).setdefault(p["grade"], set()).add(p["id"])
+    for sl in startne:
+        for p in sl.get("pupils", []):
+            nastopi.setdefault(sl["discipline_id"], {}).setdefault(sl["grade"], set()).add(p["id"])
     return nastopi
 
 
@@ -92,7 +87,8 @@ def test_kartice_xN_format_za_vsako_disciplino(client):
     dogodki = _events(client)
     disc = _disciplines(client)
     ucenci = client.get("/pupils").json()
-    nastopi = _ucenci_po_disciplini_in_razredu(ucenci, disc)
+    startne = _start_lists(client)
+    nastopi = _ucenci_po_disciplini_in_razredu(ucenci, disc, startne)
 
     assert len(disc) == 4, "mora biti 4 discipline (spol×razred)"
     for d in disc:
@@ -388,13 +384,26 @@ def test_uvoz_ne_ustvari_nove_discipline_in_doda_ucenko_k_obstojecim(client):
     from app.models import Pupil, StartList
     db = get_session()
     try:
-        ana = db.query(Pupil).filter(Pupil.first_name == "Mia", Pupil.last_name == "Kovač").first()
-        assert ana and ana.gender == "Ž" and ana.grade == "2.r", ana
+        mia = db.query(Pupil).filter(Pupil.first_name == "Mia", Pupil.last_name == "Kovač").first()
+        assert mia and mia.gender == "Ž" and mia.grade == "2.r", mia
+        # uvoz VPIŠE discipline učencu, NE ustvari štartnih list
+        assert mia.disciplines == "1", f"učenki mora biti vpisana disciplina, dobil {mia.disciplines!r}"
+        assert not db.query(StartList).filter(StartList.pupils.any(id=mia.id)).all(), \
+            "uvoz ne sme ustvariti štartnih list (to naredi gumb)"
+    finally:
+        db.close()
+
+    # gumb »Ustvari štartne liste« → vseh 16 list, učenka v (1, 2.r, Ž)
+    r = client.post("/start-lists/generate").json()
+    assert r["status"] == "success" and r["start_lists"] == 16, r
+    db = get_session()
+    try:
+        mia = db.query(Pupil).filter(Pupil.first_name == "Mia", Pupil.last_name == "Kovač").first()
         sl = db.query(StartList).filter(StartList.discipline_id == 1,
                                         StartList.grade == "2.r",
                                         StartList.gender == "Ž").first()
-        assert sl is not None and ana in sl.pupils, \
-            "učenka ni v štartni listi OBSTOJEČE discipline (tek 60m)"
+        assert sl is not None and mia in sl.pupils, \
+            "po gumbu mora biti učenka v štartni listi (1, 2.r, Ž)"
     finally:
         db.close()
 
