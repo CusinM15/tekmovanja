@@ -64,17 +64,16 @@ def _ustvari_startne_liste(db):
     # uvozu modula, preden sta definirana; zato imena kar tu)
     for disc_id, ime in enumerate(["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"], start=1):
         ime_low = ime.lower()
-        # poišči disciplino po NORMALIZIRANEM imenu (odstrani ♂/♀ in pripono
-        # " M"/" Ž") — ker ima lahko baza spolne različice, npr. 'tek 60m ♀'
-        disc = None
+        # poišči VSE različice tega športa po NORMALIZIRANEM imenu (odstrani
+        # ♂/♀ in pripono " M"/" Ž") — baza ima lahko spolne različice ('tek 60m ♀')
+        variante = []
         for d in db.query(Discipline).all():
             nm = (d.name or "").strip()
             n_low = (nm.lower().replace("♂", "").replace("♀", "").strip())
             n_low = (" " + n_low + " ").replace(" m ", " ").replace(" ž ", " ").strip()
             if n_low == ime_low:
-                disc = d
-                break
-        if disc is None:
+                variante.append(d)
+        if not variante:
             continue
         vpisani = {}
         for p in db.query(Pupil).all():
@@ -83,6 +82,16 @@ def _ustvari_startne_liste(db):
                 vpisani.setdefault((p.grade, p.gender), []).append(p)
         for grade in ("2.r", "3.r"):
             for spol in ("M", "Ž"):
+                # izberi varianto, ki ustreza spolu liste (♀/Ž za Ž, ♂/M za M)
+                disc = None
+                for d in variante:
+                    nm = (d.name or "").strip()
+                    if spol == "Ž" and ("♀" in nm or nm.rstrip().endswith((" Ž", " ž")) or (d.gender or "").upper() == "Ž"):
+                        disc = d; break
+                    if spol == "M" and ("♂" in nm or nm.rstrip().endswith((" M", " m")) or (d.gender or "").upper() == "M"):
+                        disc = d; break
+                if disc is None:
+                    disc = variante[0]
                 sl = db.query(StartList).filter(
                     StartList.discipline_id == disc.id,
                     StartList.grade == grade,

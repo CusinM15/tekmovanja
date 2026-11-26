@@ -408,6 +408,44 @@ def test_uvoz_ne_ustvari_nove_discipline_in_doda_ucenko_k_obstojecim(client):
         db.close()
 
 
+def test_generate_startne_liste_s_spolnimi_razlicicami_imen(client):
+    """GUMB »Ustvari štartne liste«: če ima baza discipline s SPOLNIMI različicami
+    imen ('tek 60m ♂'/'tek 60m ♀'), mora ustvariti 16 list (ne 0) in vsak spol
+    mora biti v svoji različici."""
+    from app.database import get_session
+    from app.models import Pupil, StartList, Discipline
+    db = get_session()
+    try:
+        imena = {1: ["tek 60m ♂", "tek 60m ♀"], 2: ["tek 400m ♂", "tek 400m ♀"],
+                 3: ["skok v daljino ♂", "skok v daljino ♀"], 4: ["met vorteksa ♂", "met vorteksa ♀"]}
+        dsc = db.query(Discipline).order_by(Discipline.id).all()
+        for i, d in enumerate(dsc[:4]):   # samo 4 privzete; morebitne dodatne pustimo
+            d.name = imena[i + 1][0]
+            db.add(Discipline(name=imena[i + 1][1], gender="Ž", applicable_grades=d.applicable_grades))
+        for sl in db.query(StartList).all():
+            db.delete(sl)
+        db.commit()
+    finally:
+        db.close()
+
+    csv = ("\ufeffŠOLA;\nOŠ Tone Čufar\n\nIme;Priimek;Razred;Spol;Discipline (ID)\n"
+           "Tina;Kovač;3;Ž;2 3\nLovro;Potočnik;2;M;1 2\n")
+    j = client.post("/import-csv", files={"file": ("s.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert j["status"] == "success", j
+    r = client.post("/start-lists/generate").json()
+    assert r["status"] == "success" and r["start_lists"] == 16, r
+
+    db = get_session()
+    try:
+        def lista_imen(priimek):
+            u = db.query(Pupil).filter(Pupil.last_name == priimek).order_by(Pupil.id.desc()).first()
+            return sorted(sl.discipline.name for sl in db.query(StartList).filter(StartList.pupils.any(id=u.id)).all())
+        assert lista_imen("Kovač") == ["skok v daljino ♀", "tek 400m ♀"], "učenka mora biti v Ž-različicah"
+        assert lista_imen("Potočnik") == ["tek 400m ♂", "tek 60m ♂"], "učenec mora biti v ♂-različicah"
+    finally:
+        db.close()
+
+
 def test_disc_po_id_izbere_obstojeco_po_spolu_brez_duplika():
     """_disciplina_po_id: če obstajata 'tek 60m ♀' in 'tek 60m ♂', vrne pravo po
     spolu in NE ustvari nove discipline (isolirana mini-baza)."""
