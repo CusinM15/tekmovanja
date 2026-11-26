@@ -915,12 +915,24 @@ def list_start_lists(db=Depends(get_db)):
 # === SCHOOL INVITATIONS ===
 
 
-def _csv_template():
+def _csv_template(school_name=None):
     """CSV predloga: 4 športi (ID 1-4), šola enkrat zgoraj, razred 2/3, spol M/Ž,
-    stolpec Discipline = ID-ji 1-4 (ločeni z vejico, npr. 1,2,4); skupina = šport×spol×razred."""
+    stolpec Discipline = ID-ji 1-4 (ločeni z vejico, npr. 1,2,4); skupina = šport×spol×razred.
+
+    Če je podano `school_name`, je ime šole v polju »ŠOLA« ŽE IZPOLNJENO (pošljemo
+    vsaki šoli svojo predlogo) — šola naj le preveri, da je pravilno, in popravi
+    samo, če ni. Brez imena ostane predloga z napovedjo `<ime svoje šole>`."""
+    if school_name:
+        sola_vrstica = f"ŠOLA:\n{school_name}\n\n"
+        korak1 = ("1. V polju »ŠOLA« zgoraj je ŽE izpolnjeno ime vaše šole. "
+                  "Preverite, da je pravilno; popravite ga SAMO, če ni pravo "
+                  "(napišite ga zgoraj, SAMO ENKRAT).\n")
+    else:
+        sola_vrstica = "ŠOLA:\n<ime svoje šole>\n\n"
+        korak1 = ("1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n")
     navodila = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
-        "1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n"
+        + korak1 +
         "2. Vsako vrstico spodaj izpolni za ENEGA učenca:\n"
         "   - Ime in priimek (npr. Ana Novak)\n"
         "   - Razred: samo 2 ali 3 (brez .r)\n"
@@ -929,8 +941,7 @@ def _csv_template():
         "3. Datoteko shrani in vrni organizatorju.\n"
         "\n"
     )
-    return ("\ufeff" + navodila +
-            "ŠOLA:\n<ime svoje šole>\n\n" +
+    return ("\ufeff" + navodila + sola_vrstica +
             "ID,Disciplina (šport)\n"
             "1,tek 60m\n2,tek 400m\n3,skok v daljino\n4,met vorteksa\n\n" +
             "Ime, Priimek, Razred, Spol, Discipline (ID)\n")
@@ -1010,7 +1021,9 @@ def csv_template_download():
 
 @app.post("/send-emails", response_model=dict, summary="Send invitations to active schools")
 def send_invitations_emails(db=Depends(get_db)):
-    """Send email invitations to all active schools with CSV template."""
+    """Send email invitations to all active schools. Vsaka šola dobi SVOJO CSV
+    predlogo z ŽE izpolnjenim imenom svoje šole v polju »ŠOLA« (šola samo preveri,
+    da je ime pravilno, in popravi le, če ni)."""
     from app.utils import send_email
 
     db_session = db  # reuse (prek Depends, samodejno zaprt)
@@ -1021,16 +1034,6 @@ def send_invitations_emails(db=Depends(get_db)):
 
     subject = "Stankov memorial — prijava učencev"
     sender = app_config.smtp_from or app_config.smtp_user or "tekmovanja@arne.gov.si"
-    recipients = [e for s in active_schools for e in parse_email_list(s.email)]
-
-    # CSV predloga z ID tabelo disciplin (kot GET /send-invitations)
-    disc = db_session.query(Discipline).order_by(Discipline.id).all()
-    legenda = "ID,Disciplina (za koga)\n"
-    for d in disc:
-        spol = "fantje" if d.gender == "M" else "punce"
-        legenda += f"{d.id},{d.name} ({spol})\n"
-    legenda += "\n"
-    csv_content = _csv_template()
 
     # PDF razpisa: uporabnikov (naložen na Nastavitvah) ali, če ga ni, psevdo-razpis.
     from app import nastavitve as _nst
@@ -1050,32 +1053,43 @@ def send_invitations_emails(db=Depends(get_db)):
                                            kraj_datum=ns.get("kraj_datum", "")),
                           "application/pdf")
 
-    atts = [("prijava_ucencev.csv", csv_content, "text/csv")]
-    if razpis_priloga:
-        atts.append(razpis_priloga)
+    poslano = 0
+    napake = []
+    for s in active_schools:
+        rec = parse_email_list(s.email)
+        if not rec:
+            napake.append(f"{s.name}: ni e-poštnega naslova")
+            continue
+        # vsaka šola svojo predlogo z že izpolnjenim imenom svoje šole
+        csv_content = _csv_template(s.name)
+        atts = [("prijava_ucencev.csv", csv_content, "text/csv")]
+        if razpis_priloga:
+            atts.append(razpis_priloga)
+        body = ("Pozdravljeni,\n\n"
+                "vabimo vas k prijavi učencev na Stankov memorial.\n\n"
+                "Izpolnite priloženo CSV datoteko (odprite jo v Excelu) in nam "
+                "vrnite izpolnjen CSV s podatki vseh učencev vaše šole. "
+                "Na vrhu datoteke so navodila — ime vaše šole je že izpolnjeno, "
+                "le preverite, da je pravilno. "
+                "V prilogi je tudi razpis tekmovanja.\n\n"
+                "Hvala in lep pozdrav,\n" + _posiljatelj_ime())
+        try:
+            send_email(
+                subject=subject,
+                sender=sender,
+                recipients=rec,
+                body=body,
+                attachments=atts,
+            )
+            poslano += 1
+        except Exception as e:
+            napake.append(f"{s.name}: {_napaka_posiljanja(e)}")
 
-    # Build message
-    body = ("Pozdravljeni,\n\n"
-            "vabimo vas k prijavi učencev na Stankov memorial.\n\n"
-            "Izpolnite priloženo CSV datoteko (prenesite jo in odprite v Excelu) in nam "
-            "vrnite izpolnjen CSV s podatki vseh učencev vaše šole. "
-            "Na vrhu datoteke so navodila za izpolnjevanje. "
-            "V prilogi je tudi razpis tekmovanja. \n\n"
-            "Hvala in lep pozdrav,\n" + _posiljatelj_ime())
-
-    try:
-        send_email(
-            subject=subject,
-            sender=sender,
-            recipients=recipients,
-            body=body,
-            attachments=atts,
-        )
-    except Exception as e:
-        print(f"send-emails napaka: {e}")
-        return {"message": _napaka_posiljanja(e), "ok": False}
-
-    return {"message": f"Povabila poslana na {len(recipients)} prejemnikov.", "ok": True}
+    if napake and poslano == 0:
+        return {"message": "Pošiljanje ni uspelo: " + "; ".join(napake), "ok": False}
+    if napake:
+        return {"message": f"Povabila poslana na {poslano} šol (napake: {'; '.join(napake)}).", "ok": True}
+    return {"message": f"Povabila poslana na {poslano} šol.", "ok": True}
 
 
 def _napaka_posiljanja(e):
