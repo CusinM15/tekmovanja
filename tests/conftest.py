@@ -7,6 +7,9 @@ import tempfile
 os.environ["TEKMOVANJA_DB"] = os.path.join(
     tempfile.mkdtemp(prefix="tekmovanja-test-"), "tekmovanja.db"
 )
+# Testi pričakujejo demo učence/rekordae: omogoči seed (v produkciji je izklopljen,
+# da se podatki vnašajo samo skozi aplikacijo in se baza ohrani).
+os.environ["TEKMOVANJA_SEED"] = "1"
 
 import pytest
 from fastapi.testclient import TestClient

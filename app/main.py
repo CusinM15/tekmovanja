@@ -80,8 +80,15 @@ def _backfill_record_snapshots(db):
 
 
 def _seed_defaults():
-    """Ob prvem zagonu (prazna baza) napolni šole, discipline, učence in rekorde,
-    da lahko uporabnik takoj preizkusi app. Če tabela že ima podatke, se ne dotika."""
+    """Ob prvem zagonu (prazna baza) napolni šole in discipline, da lahko uporabnik
+    takoj preizkusi app.
+
+    UČENCI, REZULTATI, REKORDI (demo podatki) se ustvarijo SAMO v TESTIH:
+    ko je okoljska varovalka TEKMOVANJA_SEED=1. V produkciji se podatki vnašajo
+    izključno skozi aplikacijo in baza se ohrani — ob vsakem zagonu ob prazni
+    tabeli učencev se torej 120 demo učencev NE vstavi znova (tisto je dostikrat
+    prisililo Mateja, da jih je po git pullu + run.py spet brisal).
+    """
     from app.models import School, Discipline, Pupil, CompetitionEvent, Record, SchoolStatus
 
     # Direktna seja (ne prek Depends generatorja); jo zapremo v finally.
@@ -136,8 +143,11 @@ def _seed_defaults():
                     _dd.gender = ""
             db.commit()
 
-        # --- Učenci + rezultati + rekordi + štartne liste, samo če ni učencev ---
-        if db.query(Pupil).count() == 0:
+        # --- Učenci + rezultati + rekordi (demo podatki) ---
+        # Sejejo se SAMO v testih (TEKMOVANJA_SEED=1). V produkciji uporabnik vnese
+        # učence/rekorde izključno skozi aplikacijo; baza se ohrani (ob prazni tabeli
+        # se 120 demo učencev ob vsakem zagonu ne vstavi znova).
+        if os.environ.get("TEKMOVANJA_SEED") == "1" and db.query(Pupil).count() == 0:
             sole = {s.name: s.id for s in db.query(School).all()}
             disc = {d.name: d.id for d in db.query(Discipline).all()}
 
