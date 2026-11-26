@@ -183,7 +183,7 @@ def test_predloga_vsebuje_glavo_in_sola(client):
     (Razred 2/3, brez stolpca Discipline)."""
     j = client.get("/send-invitations").json()
     gl = j["csv_template"]
-    assert "Ime, Priimek, Razred, Spol, Discipline (ID)" in gl
+    assert "Ime;Priimek;Razred;Spol;Discipline (ID)" in gl, "predloga naj uporablja podpičje (';') kot ločilo (Slovenski Excel)"
     assert "ŠOLA:" in gl
     assert "*** NAVODILA" in gl
     assert "First Name" not in gl

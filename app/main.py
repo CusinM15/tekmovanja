@@ -941,9 +941,9 @@ def _csv_template(school_name=None):
         "\n"
     )
     return ("\ufeff" + navodila + sola_vrstica +
-            "ID,Disciplina (šport)\n"
-            "1,tek 60m\n2,tek 400m\n3,skok v daljino\n4,met vorteksa\n\n" +
-            "Ime, Priimek, Razred, Spol, Discipline (ID)\n")
+            "ID;Disciplina (šport)\n"
+            "1;tek 60m\n2;tek 400m\n3;skok v daljino\n4;met vorteksa\n\n" +
+            "Ime;Priimek;Razred;Spol;Discipline (ID)\n")
 
 
 # 4 discipline = 4 športi (ID 1-4); spol+razred iz vrstice določita tekmovalno
@@ -1160,6 +1160,22 @@ def _normalize_commaless_template(text: str):
     return "\n".join(out) if (ima_glavo and ima_podatke) else None
 
 
+def _detect_delimiter(text: str) -> str:
+    """Prepozna ločilo CSV. Slovenski Excel shranjuje s PODPIČJEM (';'), mi pa smo
+    doslej uporabljali vejico — zato je CSV šolam 'ne delal'. Tu pogledamo glavo:
+    če se 'Ime/Priimek/Razred/Spol' razbije na stolpce s podpičjem, vrnemo ';',
+    sicer ',' (ali tab). Tako uvoz sprejme tako ';' kot ',' CSV."""
+    import csv as _csv
+    from io import StringIO as _SIO
+    for sep in (";", ",", "\t"):
+        for line in text.splitlines()[:30]:
+            cells = list(_csv.reader([line], delimiter=sep))[0]
+            low = {c.strip().lower() for c in cells if c.strip()}
+            if "ime" in low and "priimek" in low and ("razred" in low or "spol" in low):
+                return sep
+    return ","
+
+
 @app.post("/import-csv", response_model=dict, summary="Import completed CSV")
 async def import_csv(
     file: UploadFile = Form(...),
@@ -1178,8 +1194,9 @@ async def import_csv(
     import csv
     from io import StringIO
     
-    # Parse the CSV content
-    reader = csv.reader(StringIO(text))
+    # Parse the CSV content — ločilo prepoznamo (Slovenski Excel uporablja podpičje ';')
+    delim = _detect_delimiter(text)
+    reader = csv.reader(StringIO(text), delimiter=delim)
     rows = list(reader)
     
     if not rows or len(rows) < 1:
