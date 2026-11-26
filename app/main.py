@@ -29,6 +29,19 @@ app = FastAPI(
     version="0.1.0"
 )
 
+
+@app.exception_handler(Exception)
+async def _splosna_napaka(request, exc):
+    """Neujeto strežniško izjemo (npr. napaka pri uvozu rekordov, DB integrity)
+    spremenimo iz slepe 'Napaka 500' v berljiv JSON s pravim vzrokom, in izpišemo
+    traceback v konzolo, da vidimo kaj je bilo narobe. HTTPException (400/404/...)
+    ima svoj privzet handler in tu ne vplivamo nanj."""
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(status_code=400, content={
+        "detail": f"Napaka na strežniku: {type(exc).__name__}: {exc}",
+    })
+
 # Get session dependency — generator, da se session VEDNO zapre po requestu
 # (brez tega se QueuePool izčrpa in app po nekaj klicih zmrzne)
 def get_db(session_locator=get_session):
