@@ -1123,6 +1123,44 @@ def _posiljatelj_ime():
 
 # === CSV IMPORT ===
 
+
+def _normalize_commaless_template(text: str):
+    """Če je CSV predloga IZGUBILA VEJICE (ločila) — npr. potegnjena skozi
+    Excel/urejevalnik, ki vejice 'poje' kot ločila, zato so polja zlepljena:
+    'IDDisciplina (šport)', '1tek 60m', 'EnIz Mojstrane2M1 2' — predlogo prevedemo
+    nazaj v VEJIČNO obliko, da jo obstoječi parser lahko uvozi.
+
+    Kliče se samo kot FALLBACK (ko vejična glava ni najdena); pravilen vejični CSV
+    se ne spreminja. Če ne prepoznamo glave in vsaj enega učenca, vrnemo None."""
+    import re
+    glava_re = re.compile(r"\bime\b.*\bpriimek\b.*\brazred\b.*\bspol\b")
+    data_re = re.compile(
+        r"^\s*(?P<ime>.+?)\s*(?P<raz>[23])\s*(?P<spol>[MŽ])\s*"
+        r"(?P<d>[1-4](?:\s*[, ]\s*[1-4])?)\s*$"
+    )
+    ima_glavo = False
+    ima_podatke = False
+    out = []
+    for linija in text.splitlines():
+        l = linija.strip()
+        if glava_re.search(l.lower()):
+            ima_glavo = True
+            out.append("Ime, Priimek, Razred, Spol, Discipline (ID)")
+            continue
+        if l:
+            m = data_re.match(l)
+            if m:
+                delki = re.split(r"\s+", m.group("ime").strip(), maxsplit=1)
+                if len(delki) == 2:  # ime + priimek
+                    d = re.sub(r"\s+", " ", m.group("d").replace(",", " ")).strip()
+                    ima_podatke = True
+                    out.append(f"{delki[0]}, {delki[1]}, {m.group('raz')}, "
+                               f"{m.group('spol').upper()}, {d}")
+                    continue
+        out.append(linija)
+    return "\n".join(out) if (ima_glavo and ima_podatke) else None
+
+
 @app.post("/import-csv", response_model=dict, summary="Import completed CSV")
 async def import_csv(
     file: UploadFile = Form(...),
@@ -1163,6 +1201,25 @@ async def import_csv(
         if ima_ime and ima_priimek and (ima_razred or ima_spol):
             header_idx = idx
             break
+    if header_idx is None:
+        # Tolerantnost: če glava ni najdena, je vsebina morda IZGUBILA VEJICE
+        # (Excel/urejevalnik 'poje' vejice kot ločila → polja zlepljena). Predlogo
+        # normaliziramo nazaj v vejice in ponovno poiščemo glavo/učence. Pravi
+        # vejični CSV se ne spremeni.
+        _norm = _normalize_commaless_template(text)
+        if _norm is not None:
+            rows = list(csv.reader(StringIO(_norm)))
+            if rows and rows[0]:
+                rows[0][0] = rows[0][0].lstrip("\ufeff")
+            for idx, r in enumerate(rows):
+                nizki = {c.strip().lower() for c in r if c.strip()}
+                ima_ime = ("first name" in nizki or "ime" in nizki)
+                ima_priimek = ("last name" in nizki or "priimek" in nizki)
+                ima_razred = ("grade" in nizki or "razred" in nizki)
+                ima_spol = ("gender" in nizki or "spol" in nizki)
+                if ima_ime and ima_priimek and (ima_razred or ima_spol):
+                    header_idx = idx
+                    break
     if header_idx is None:
         raise HTTPException(status_code=400, detail="CSV manjka glava: Ime, Priimek, Razred, Spol, Discipline (ID)")
 
