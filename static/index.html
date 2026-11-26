@@ -1316,13 +1316,31 @@ function prenesiPredlogaCsv(){
 function odpriModalUvozCsv(){
   $('modal-vsebina').innerHTML =
     '<h3>📄 Uvoz učencev iz CSV</h3>' +
-    '<div class="info">Izberite izpolnjeno CSV datoteko, ki so jo vrnile šole. Stolpci: First Name, Last Name, School, Grade, Gender, Discipline (ID iz tabele v predlogi).</div>' +
+    '<div class="info">Izberite izpolnjeno CSV datoteko, ki so jo vrnile šole — ali pa prilepite njeno vsebino (Ctrl+A → Ctrl+V). Stolpci: Ime, Priimek, Razred, Spol, Discipline (ID iz tabele v predlogi).</div>' +
     '<div class="polje"><label>CSV datoteka</label><input id="f-csv" type="file" accept=".csv,text/csv"></div>' +
+    '<div class="polje"><label>…ali prilepi vsebino CSV</label><textarea id="f-csv-besedilo" rows="6" style="width:100%;font-family:monospace;font-size:13px;box-sizing:border-box" placeholder="Prilepi vsebino CSV predloge s podatki učencev…"></textarea></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
-      '<button class="gumb gumb-zelen" onclick="uvoziCsv()">Uvozi</button>' +
+      '<button class="gumb gumb-zelen" onclick="uvoziCsv()">Uvozi datoteko</button>' +
+      '<button class="gumb gumb-moder" onclick="uvoziCsvIzBesedila()">Uvozi iz prilepljenega</button>' +
     '</div>';
   odpriModal();
+}
+
+function uvoziCsvIzBesedila(){
+  var t = $('f-csv-besedilo');
+  var v = t ? t.value : '';
+  if (!v.trim()){ toast('Prilepite vsebino CSV predloge (Ctrl+A na vrhu datoteke).', 'napaka'); return; }
+  var fd = new FormData();
+  fd.append('file', new Blob([v], { type: 'text/csv' }), 'ucenci_direktno.csv');
+  api('/import-csv', 'POST', fd).then(function(r){
+    var sp = r.status === 'error' ? 'napaka' : 'ok';
+    var besedilo = r.message || '';
+    if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
+    toast(besedilo, sp);
+    zapriModal();
+    natovoriUcence(); natovoriPregled(); natovoriStartne(); natovoriRezultate();
+  }).catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }
 
 function uvoziCsv(){
