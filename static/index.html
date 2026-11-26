@@ -873,17 +873,17 @@ function izbrisiDisciplino(id){
 
 /* ================= REZULTATI ================= */
 var REZULTATI_DOGODKI = [];
-var REZULTATI_STARTNE = [];   // štartne liste (za N na karticah in seznam v detajlu)
 var REZULTATI_AKTIVNA = null;   // id discipline, ki je odprta v podpogledu (null = pregled)
+// ID discipline (1-4, kot se vpisuje ob uvozu) -> ime športa
+var SPORT_KLJUC_PO_ID = {1: 'tek 60m', 2: 'tek 400m', 3: 'skok v daljino', 4: 'met vorteksa'};
 
 function natovoriRezultate(){
-  return Promise.all([api('/events'), api('/disciplines'), api('/start-lists')]).then(function(rez){
+  return Promise.all([api('/events'), api('/disciplines')]).then(function(rez){
     REZULTATI_DOGODKI = rez[0];
     var disc = rez[1];
-    REZULTATI_STARTNE = rez[2] || [];
     VSE_DISCIPLINE = unikatneDiscipline(disc);
-    // N (učenci, prijavljeni v štartno listo tega športa) naložimo LOČENO: če
-    // /pupils kdaj odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
+    // N (učenci z VPISANO disciplino iz uvoza, Pupil.disciplines) naložimo LOČENO:
+    // če /pupils kdaj odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
     api('/pupils').then(function(ucenci){
       izrisiKarticeRezultati(disc, ucenci || []);
       natovoriTockeSole();
@@ -953,6 +953,7 @@ function izrisiKarticeRezultati(disc, ucenci){
     var veljavni = {};
     for (var ri = 0; ri < deli.length; ri++) veljavni[deli[ri].trim()] = true;
     var imeK = String(d.name || '').replace(/[♂♀][\s]*$/g, '').replace(/\s+[MŽ]\s*$/, '').trim();
+    var k = sportKljuc(d.name);   // ključ športa (za N iz vpisanih disciplin)
     // Ženske prve, nato moški (vedno oba spola).
     var mozni = ['Ž', 'M'];
     var karticeVrstice = '';
@@ -971,26 +972,30 @@ function izrisiKarticeRezultati(disc, ucenci){
           : (gd === 'M' || nmd.indexOf('♂') !== -1 || nmd.indexOf(' M') !== -1);
         if (ujema){ idCilj = dd.id; break; }
       }
-      // N = učenci tega spola v razredu, PRIJAVLJENI v štartno listo tega športa
-      // (katera koli različica discipline) — ne vsi učenci razreda/spola.
-      function stPrijavljenih(grade2, gender2){
-        var seen = {}, n = 0;
-        for (var z = 0; z < REZULTATI_STARTNE.length; z++){
-          var sl = REZULTATI_STARTNE[z];
-          if (sportIds.indexOf(sl.discipline_id) === -1) continue;
-          if ((sl.grade || '') !== grade2) continue;
-          if ((sl.gender || '').toUpperCase() !== gender2) continue;
-          var pl = sl.pupils || [];
-          for (var pz = 0; pz < pl.length; pz++){
-            var pid = pl[pz].id;
-            if (seen[pid]) continue;
-            seen[pid] = true; n++;
-          }
+      // N = učenci tega spola v razredu z VPISANO to disciplino (iz uvoza,
+      // Pupil.disciplines: ID-ji 1-4) — ne vsi učenci razreda/spola in ne
+      // odvisno od štartnih list (te nastanejo šele z gumbom).
+      function sportiUcenca(p){
+        var s = {};
+        var dsc = String(p.disciplines || '').split(/[,;\s]+/);
+        for (var qi = 0; qi < dsc.length; qi++){
+          var imeS = SPORT_KLJUC_PO_ID[dsc[qi]];
+          if (imeS) s[sportKljuc(imeS)] = true;
+        }
+        return s;
+      }
+      function stVpisanih(grade2, gender2){
+        var n = 0;
+        for (var ui = 0; ui < ucenci.length; ui++){
+          var u2 = ucenci[ui];
+          if ((u2.grade || '') !== grade2) continue;
+          if ((u2.gender || '').toUpperCase() !== gender2) continue;
+          if (sportiUcenca(u2)[k]) n++;
         }
         return n;
       }
-      var N2 = veljavni['2.r'] ? stPrijavljenih('2.r', gender) : 0;
-      var N3 = veljavni['3.r'] ? stPrijavljenih('3.r', gender) : 0;
+      var N2 = veljavni['2.r'] ? stVpisanih('2.r', gender) : 0;
+      var N3 = veljavni['3.r'] ? stVpisanih('3.r', gender) : 0;
       // x = koliko RAZLIČNIH učencev tega spola v razredu že ima rezultat
       // (vse različice istega športa — tudi 'tek 60m Ž' in 'tek 60m').
       var zRez2 = {}, zRez3 = {};
@@ -1057,12 +1062,11 @@ function prikaziRezultateDiscipline(id, spolFil){
     if (sportKljuc(dd0.name) === kGl) sportIds.push(dd0.id);
   }
 
-  // V vsaki skupini izpišemo učence, ki so PRIJAVLJENI v štartno listo tega športa
-  // (katera koli različica discipline) za ta razred in spol — ne VSE učence
-  // razreda/spola (učenec vpisan v 2 disciplini se ne sme kazati v vseh 4).
-  Promise.all([api('/pupils'), api('/start-lists')]).then(function(rez2){
-    var ucenci = rez2[0] || [];
-    var startne = rez2[1] || [];
+  // V vsaki skupini izpišemo učence z VPISANO to disciplino (iz uvoza,
+  // Pupil.disciplines: ID-ji 1-4) za ta razred in spol — ne VSE učence
+  // razreda/spola in ne odvisno od štartnih list (te nastanejo šele z gumbom).
+  api('/pupils').then(function(ucenci){
+    ucenci = ucenci || [];
     // 2 skupini po spolu discipline: 2.r in 3.r
     var skupine = [
       ['2.r', 'M', '2. razred — fantje'],
@@ -1081,22 +1085,19 @@ function prikaziRezultateDiscipline(id, spolFil){
       // tudi če je odprta spolna različica 'tek 60m M').
       var prikaziVseSkupine = !dsc.gender || dsc.gender === '';
       if (!prikaziVseSkupine && !spolFil && (spol || '').toUpperCase() !== discSpol) continue;
-      // učenci, prijavljeni v štartno listo tega športa za ta razred+spol
-      var prijavljeni = {};
-      for (var z = 0; z < startne.length; z++){
-        var sl = startne[z];
-        if (sportIds.indexOf(sl.discipline_id) === -1) continue;
-        if ((sl.grade || '') !== raz) continue;
-        if ((sl.gender || '').toUpperCase() !== spol) continue;
-        var pl = sl.pupils || [];
-        for (var pz = 0; pz < pl.length; pz++) prijavljeni[pl[pz].id] = true;
-      }
+      // učenci s VPISANO to disciplino (iz uvoza) za ta razred+spol
       var izbrani = [];
       for (var p = 0; p < ucenci.length; p++){
         var u = ucenci[p];
-        if (!prijavljeni[u.id]) continue;
         if ((u.grade || '') !== raz) continue;
         if ((u.gender || '').toUpperCase() !== spol) continue;
+        var vpisano = false;
+        var dscU = String(u.disciplines || '').split(/[,;\s]+/);
+        for (var qi = 0; qi < dscU.length; qi++){
+          var imeS = SPORT_KLJUC_PO_ID[dscU[qi]];
+          if (imeS && sportKljuc(imeS) === kGl){ vpisano = true; break; }
+        }
+        if (!vpisano) continue;
         izbrani.push(u);
       }
       var vrstice = '', st = 0;
