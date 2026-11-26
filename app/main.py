@@ -993,17 +993,44 @@ def _xlsx_bytes(school_name=None) -> bytes:
 DEFAULT_DISCIPLINE_ORDER = ["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"]
 
 
-def _disciplina_po_id(db, disc_id):
-    """Vrne disciplino za ID 1-4 (šport); ustvari jo, če še ni v bazi."""
+def _disciplina_po_id(db, disc_id, gender=""):
+    """Vrne disciplino za ID 1-4 (šport). NE ustvari nove, če za ta šport v bazi že
+    obstaja — izbere obstoječo glede na SPOL (npr. 'tek 60m Ž'/'tek 60m ♀' za Ž) ali
+    nevtralno. Novo disciplino ustvari SAMO, če za šport ni nobene (še ne obstaja)
+    — tako uvoz NE podvaja disciplin in učenci pridejo k obstoječim discipline."""
     if not 1 <= disc_id <= 4:
         return None
     ime = DEFAULT_DISCIPLINE_ORDER[disc_id - 1]
-    d = db.query(Discipline).filter(Discipline.name == ime).first()
-    if not d:
-        d = Discipline(name=ime, gender="", applicable_grades="2.r,3.r")
-        db.add(d)
-        db.flush()
-    return d
+    ime_low = ime.lower()
+    spol = (gender or "").strip().upper()
+
+    isti_sport = []
+    for d in db.query(Discipline).all():
+        nm = (d.name or "").strip()
+        # normaliziraj ime: odstrani ikoni ♂/♀ in pripono " M"/" Ž"
+        n_low = (nm.lower().replace("♂", "").replace("♀", "").strip())
+        n_low = (" " + n_low + " ").replace(" m ", " ").replace(" ž ", " ").strip()
+        if n_low == ime_low:
+            isti_sport.append(d)
+    if not isti_sport:
+        # ni nobene discipline za ta šport — edini primer, ko jo ustvarimo (ne duplika)
+        nova = Discipline(name=ime, gender="", applicable_grades="2.r,3.r")
+        db.add(nova)
+        return nova
+
+    # 1) najprej disciplina, ki se ujema po spolu (ikona ♂/♀ ali pripona " M"/" Ž")
+    for d in isti_sport:
+        nm = (d.name or "").strip()
+        if spol == "Ž" and ("♀" in nm or nm.endswith(" Ž") or nm.endswith(" ž")):
+            return d
+        if spol == "M" and ("♂" in nm or nm.endswith(" M") or nm.endswith(" m")):
+            return d
+    # 2) nevtralna disciplina (gender prazen) — šport je nevtralen
+    for d in isti_sport:
+        if not d.gender or not d.gender.strip():
+            return d
+    # 3) katera koli obstoječa za ta šport (nikoli ne ustvarimo nove)
+    return isti_sport[0]
 
 
 @app.get("/send-invitations", response_model=dict, summary="Generate CSV template")
@@ -1462,7 +1489,7 @@ def _import_rows(rows, db, text=None):
             if len(sne) >= 2:
                 continue
             sne.append(disc_id)
-            disc = _disciplina_po_id(db, disc_id)
+            disc = _disciplina_po_id(db, disc_id, gender)
             if disc is None:
                 errors.append(f"Vrstica {i}: neznan ID discipline {disc_id}.")
                 continue

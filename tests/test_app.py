@@ -373,6 +373,58 @@ def test_xlsx_template_prenos(client):
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in r.headers.get("content-type", "")
 
 
+def test_uvoz_ne_ustvari_nove_discipline_in_doda_ucenko_k_obstojecim(client):
+    """UVOZ: ne sme ustvariti NOVE discipline — učenka se doda k OBSTOJEČI
+    disciplini ('tek 60m') in v njeno štartno listo (ženskí razred)."""
+    n_pred = len(client.get("/disciplines").json())
+    csv = ("\ufeffŠOLA;\nOŠ Tone Čufar\n\nIme;Priimek;Razred;Spol;Discipline (ID)\n"
+           "Mia;Kovač;2;Ž;1\n")
+    j = client.post("/import-csv", files={"file": ("s.csv", csv.encode("utf-8"), "text/csv")}).json()
+    assert j["status"] == "success", j
+    disc_po = client.get("/disciplines").json()
+    assert len(disc_po) == n_pred, f"uvoz je ustvaril novo disciplino: {[d['name'] for d in disc_po]}"
+
+    from app.database import get_session
+    from app.models import Pupil, StartList
+    db = get_session()
+    try:
+        ana = db.query(Pupil).filter(Pupil.first_name == "Mia", Pupil.last_name == "Kovač").first()
+        assert ana and ana.gender == "Ž" and ana.grade == "2.r", ana
+        sl = db.query(StartList).filter(StartList.discipline_id == 1,
+                                        StartList.grade == "2.r",
+                                        StartList.gender == "Ž").first()
+        assert sl is not None and ana in sl.pupils, \
+            "učenka ni v štartni listi OBSTOJEČE discipline (tek 60m)"
+    finally:
+        db.close()
+
+
+def test_disc_po_id_izbere_obstojeco_po_spolu_brez_duplika():
+    """_disciplina_po_id: če obstajata 'tek 60m ♀' in 'tek 60m ♂', vrne pravo po
+    spolu in NE ustvari nove discipline (isolirana mini-baza)."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.models import Base, Discipline
+    import app.main as M
+    eng = create_engine("sqlite://")
+    Base.metadata.create_all(eng)
+    s = sessionmaker(bind=eng)()
+    try:
+        d_z = Discipline(name="tek 60m ♀", gender="Ž", applicable_grades="2.r,3.r")
+        d_m = Discipline(name="tek 60m ♂", gender="M", applicable_grades="2.r,3.r")
+        s.add_all([d_z, d_m]); s.commit()
+        assert M._disciplina_po_id(s, 1, "Ž") is d_z, "mora izbrati 'tek 60m ♀'"
+        assert M._disciplina_po_id(s, 1, "M") is d_m, "mora izbrati 'tek 60m ♂'"
+        assert s.query(Discipline).count() == 2, "ustvarjena nova disciplina!"
+        # nevtralna obstoječa (brez ikone) → vrne njo
+        d_n = Discipline(name="tek 400m", gender="", applicable_grades="2.r,3.r")
+        s.add(d_n); s.commit()
+        assert M._disciplina_po_id(s, 2, "Ž") is d_n
+        assert s.query(Discipline).count() == 3
+    finally:
+        s.close()
+
+
 def test_uvoz_vecih_disciplin_brez_narekovajev(client):
     """'1,2,4' BREZ narekovajev csv razbije na več celic — uvoz mora vseeno
     prebrati VSE discipline (združi celice od Discipline naprej), ne samo prve."""
