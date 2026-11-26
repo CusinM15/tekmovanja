@@ -270,8 +270,8 @@
     </div>
 
     <h2 style="margin-top:26px">Brisanje podatkov tekmovanja</h2>
-    <p class="opis">S tem gumbom počistite podatke tekmovanja (učence in rezultate). Šole in discipline ostanejo; rekordi in štartne liste se prav tako izbrišejo.</p>
-    <div class="opozorilo">⚠️ Ta ukaz <strong>trajno izbriše</strong> vse učence in vse rezultate tekmovanja. Tega ni mogoče razveljaviti! Šole in discipline ostanejo.</div>
+    <p class="opis">S tem gumbom počistite podatke tekmovanja (učence in rezultate). Šole, discipline in rekordi ostanejo; izbrišejo se še štartne liste.</p>
+    <div class="opozorilo">⚠️ Ta ukaz <strong>trajno izbriše</strong> vse učence in vse rezultate tekmovanja. Tega ni mogoče razveljaviti! Šole, discipline in rekordi ostanejo.</div>
     <button class="gumb gumb-rdec" onclick="pocistiPodatke()">🗑️ Počisti podatke tekmovanja</button>
   </section>
 
@@ -1428,7 +1428,7 @@ function shraniSmtp(){
 
 /* ================= BRISANJE PODATKOV ================= */
 function pocistiPodatke(){
-  var odgovor = prompt('POZOR: To bo trajno izbrisalo VSE učence in VSE rezultate tekmovanja!\n\nZa potrditev vpišite: DA\n\n(Šole in discipline ostanejo.)');
+  var odgovor = prompt('POZOR: To bo trajno izbrisalo VSE učence in VSE rezultate tekmovanja!\n\nZa potrditev vpišite: DA\n\n(Šole, discipline in rekordi ostanejo.)');
   if (odgovor === null) return;
   if (odgovor.trim().toUpperCase() !== 'DA'){ toast('Brisanje preklicano — vpisali niste DA.', 'napaka'); return; }
   api('/delete-data/execute', 'POST').then(function(r){
