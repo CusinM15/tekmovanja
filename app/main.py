@@ -55,19 +55,34 @@ def get_db(session_locator=get_session):
 
 def _ensure_start_lists(db):
     """Nedestruktivno: za vsako disciplino × applicable grade, ki ŠE NIMA štartne
-    liste, jo doda z do 15 učenci pravega spola+razreda. Idempotentno (že obstoječe
-    pusti pri miru). Ob zagonu tako doda manjkajoče tudi na obstoječi bazi — s tem
-    Windows klon po `git pull` dobi štartne liste brez brisanja podatkov."""
+    liste, jo doda — ampak SAMO z učenci, ki so za TO disciplino dejansko prijavljeni
+    (so v kaki štartni listi discipline ali imajo rezultat), ne z vsemi učenci
+    razreda/spola. Idempotentno (že obstoječe pusti pri miru). Ob zagonu tako doda
+    manjkajoče tudi na obstoječi bazi — brez brisanja podatkov in BREZ tega, da bi
+    se učenec znašel v štartnih listah vseh disciplin, čeprav je vpisan v 2."""
     discs = db.query(Discipline).all()
     for d in discs:
         grades = [g.strip() for g in (d.applicable_grades or "").split(",") if g.strip()]
         obstoj = {(sl.grade, sl.gender) for sl in db.query(StartList).filter(StartList.discipline_id == d.id).all()}
+        # učenci, ki so za TO disciplino dejansko prijavljeni: v kakšni štartni listi
+        # discipline ali z rezultatom (CompetitionEvent) za njo
+        vpisani = set()
+        for sl0 in db.query(StartList).filter(StartList.discipline_id == d.id).all():
+            for p in sl0.pupils:
+                vpisani.add(p.id)
+        for ev in db.query(CompetitionEvent).filter(CompetitionEvent.discipline_id == d.id).all():
+            if ev.pupil_id:
+                vpisani.add(ev.pupil_id)
         for grade in grades:
             for spol in ("M", "Ž"):
                 if (grade, spol) in obstoj:
                     continue
+                if not vpisani:
+                    continue
                 kandidati = db.query(Pupil).filter(
-                    Pupil.gender == spol, Pupil.grade == grade
+                    Pupil.id.in_(vpisani),
+                    Pupil.gender == spol,
+                    Pupil.grade == grade,
                 ).order_by(Pupil.id).all()
                 if not kandidati:
                     continue

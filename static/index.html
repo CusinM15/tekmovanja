@@ -873,15 +873,17 @@ function izbrisiDisciplino(id){
 
 /* ================= REZULTATI ================= */
 var REZULTATI_DOGODKI = [];
+var REZULTATI_STARTNE = [];   // štartne liste (za N na karticah in seznam v detajlu)
 var REZULTATI_AKTIVNA = null;   // id discipline, ki je odprta v podpogledu (null = pregled)
 
 function natovoriRezultate(){
-  return Promise.all([api('/events'), api('/disciplines')]).then(function(rez){
+  return Promise.all([api('/events'), api('/disciplines'), api('/start-lists')]).then(function(rez){
     REZULTATI_DOGODKI = rez[0];
     var disc = rez[1];
+    REZULTATI_STARTNE = rez[2] || [];
     VSE_DISCIPLINE = unikatneDiscipline(disc);
-    // N (vsi učenci, ki spadajo pod disciplino) naložimo LOČENO: če /pupils kdaj
-    // odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
+    // N (učenci, prijavljeni v štartno listo tega športa) naložimo LOČENO: če
+    // /pupils kdaj odpove, morajo kartice VSEENO ostati (takrat N=0), da se zavihek ne podre.
     api('/pupils').then(function(ucenci){
       izrisiKarticeRezultati(disc, ucenci || []);
       natovoriTockeSole();
@@ -969,9 +971,26 @@ function izrisiKarticeRezultati(disc, ucenci){
           : (gd === 'M' || nmd.indexOf('♂') !== -1 || nmd.indexOf(' M') !== -1);
         if (ujema){ idCilj = dd.id; break; }
       }
-      // N = samo učenci tega spola v razredu, ki spadajo pod disciplino.
-      var N2 = veljavni['2.r'] ? stejUcenceDiscipline(ucenci, d, '2.r', gender) : 0;
-      var N3 = veljavni['3.r'] ? stejUcenceDiscipline(ucenci, d, '3.r', gender) : 0;
+      // N = učenci tega spola v razredu, PRIJAVLJENI v štartno listo tega športa
+      // (katera koli različica discipline) — ne vsi učenci razreda/spola.
+      function stPrijavljenih(grade2, gender2){
+        var seen = {}, n = 0;
+        for (var z = 0; z < REZULTATI_STARTNE.length; z++){
+          var sl = REZULTATI_STARTNE[z];
+          if (sportIds.indexOf(sl.discipline_id) === -1) continue;
+          if ((sl.grade || '') !== grade2) continue;
+          if ((sl.gender || '').toUpperCase() !== gender2) continue;
+          var pl = sl.pupils || [];
+          for (var pz = 0; pz < pl.length; pz++){
+            var pid = pl[pz].id;
+            if (seen[pid]) continue;
+            seen[pid] = true; n++;
+          }
+        }
+        return n;
+      }
+      var N2 = veljavni['2.r'] ? stPrijavljenih('2.r', gender) : 0;
+      var N3 = veljavni['3.r'] ? stPrijavljenih('3.r', gender) : 0;
       // x = koliko RAZLIČNIH učencev tega spola v razredu že ima rezultat
       // (vse različice istega športa — tudi 'tek 60m Ž' in 'tek 60m').
       var zRez2 = {}, zRez3 = {};
@@ -1038,9 +1057,12 @@ function prikaziRezultateDiscipline(id, spolFil){
     if (sportKljuc(dd0.name) === kGl) sportIds.push(dd0.id);
   }
 
-  // V vsaki skupini izpišemo VSE učence ustreznega razreda in spola discipline
-  // (tudi tiste, ki še nimajo rezultata) — tako lahko rezultat dodaš z »＋ Dodaj rezultat«.
-  api('/pupils').then(function(ucenci){
+  // V vsaki skupini izpišemo učence, ki so PRIJAVLJENI v štartno listo tega športa
+  // (katera koli različica discipline) za ta razred in spol — ne VSE učence
+  // razreda/spola (učenec vpisan v 2 disciplini se ne sme kazati v vseh 4).
+  Promise.all([api('/pupils'), api('/start-lists')]).then(function(rez2){
+    var ucenci = rez2[0] || [];
+    var startne = rez2[1] || [];
     // 2 skupini po spolu discipline: 2.r in 3.r
     var skupine = [
       ['2.r', 'M', '2. razred — fantje'],
@@ -1059,14 +1081,21 @@ function prikaziRezultateDiscipline(id, spolFil){
       // tudi če je odprta spolna različica 'tek 60m M').
       var prikaziVseSkupine = !dsc.gender || dsc.gender === '';
       if (!prikaziVseSkupine && !spolFil && (spol || '').toUpperCase() !== discSpol) continue;
-      // Vsi učenci tega razreda in spola, ne glede na to, ali imajo rezultat.
+      // učenci, prijavljeni v štartno listo tega športa za ta razred+spol
+      var prijavljeni = {};
+      for (var z = 0; z < startne.length; z++){
+        var sl = startne[z];
+        if (sportIds.indexOf(sl.discipline_id) === -1) continue;
+        if ((sl.grade || '') !== raz) continue;
+        if ((sl.gender || '').toUpperCase() !== spol) continue;
+        var pl = sl.pupils || [];
+        for (var pz = 0; pz < pl.length; pz++) prijavljeni[pl[pz].id] = true;
+      }
       var izbrani = [];
       for (var p = 0; p < ucenci.length; p++){
         var u = ucenci[p];
+        if (!prijavljeni[u.id]) continue;
         if ((u.grade || '') !== raz) continue;
-        // filtriramo po SPOLU SKUPINE (M/Ž), ne po spolu discipline —
-        // pri nevtralnih športih (npr. tek 60m) je discipline.gender='' in bi
-        // diskSpol='' izpustil VSE učence (skupine bi bile prazne).
         if ((u.gender || '').toUpperCase() !== spol) continue;
         izbrani.push(u);
       }
@@ -1354,31 +1383,13 @@ function prenesiPredlogaCsv(){
 function odpriModalUvozCsv(){
   $('modal-vsebina').innerHTML =
     '<h3>📄 Uvoz učencev (Excel ali CSV)</h3>' +
-    '<div class="info">Izberite izpolnjeno Excel datoteko (.xlsx) ali CSV, ki so jo vrnile šole — ali pa prilepite vsebino CSV (Ctrl+A → Ctrl+V). Stolpci: Ime, Priimek, Razred, Spol, Discipline (ID iz razpredelnice v predlogi).</div>' +
+    '<div class="info">Izberite izpolnjeno Excel datoteko (.xlsx) ali CSV, ki so jo vrnile šole. Stolpci: Ime, Priimek, Razred, Spol, Discipline (ID iz razpredelnice v predlogi).</div>' +
     '<div class="polje"><label>Excel (.xlsx) ali CSV datoteka</label><input id="f-csv" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></div>' +
-    '<div class="polje"><label>…ali prilepi vsebino CSV</label><textarea id="f-csv-besedilo" rows="6" style="width:100%;font-family:monospace;font-size:13px;box-sizing:border-box" placeholder="Prilepi vsebino CSV predloge s podatki učencev…"></textarea></div>' +
     '<div class="modal-gumbi">' +
       '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
       '<button class="gumb gumb-zelen" onclick="uvoziCsv()">Uvozi datoteko</button>' +
-      '<button class="gumb gumb-moder" onclick="uvoziCsvIzBesedila()">Uvozi iz prilepljenega</button>' +
     '</div>';
   odpriModal();
-}
-
-function uvoziCsvIzBesedila(){
-  var t = $('f-csv-besedilo');
-  var v = t ? t.value : '';
-  if (!v.trim()){ toast('Prilepite vsebino CSV predloge (Ctrl+A na vrhu datoteke).', 'napaka'); return; }
-  var fd = new FormData();
-  fd.append('file', new Blob([v], { type: 'text/csv' }), 'ucenci_direktno.csv');
-  api('/import-csv', 'POST', fd).then(function(r){
-    var sp = r.status === 'error' ? 'napaka' : 'ok';
-    var besedilo = r.message || '';
-    if (r.errors && r.errors.length) besedilo += ' (' + r.errors.length + ' napak: ' + r.errors.slice(0,3).join('; ') + ')';
-    toast(besedilo, sp);
-    zapriModal();
-    natovoriUcence(); natovoriPregled(); natovoriStartne(); natovoriRezultate();
-  }).catch(function(e){ toast('Napaka pri uvozu: ' + e.message, 'napaka'); });
 }
 
 function uvoziCsv(){
