@@ -770,12 +770,17 @@ async def record_csv_import(
             school = None
             if osmola:
                 school = db.query(School).filter(School.name.ilike(osmola)).first()
+                # Variacija imena (npr. "OŠ Tone Čufar" vs. "OŠ Toneta Čufarja"): če
+                # šola že obstaja pod drugim imenom, a z istim slug-emailom, jo PONOVNO
+                # UPORABIMO namesto da bi ustvarili duplikat (UNIQUE schools.email bi
+                # vrgel IntegrityError in pobavil sejo -> PendingRollbackError -> 500).
+                base = re.sub(r"[^a-z0-9]+", "-", osmola.lower()).strip("-") or "sola"
+                slug_email = f"{base}@example.si"
                 if school is None:
-                    # Manjkajoča šola iz CSV-ja — ustvarimo jo (placeholder email),
-                    # da lahko uvozimo učenca/rekord.
-                    base = re.sub(r"[^a-z0-9]+", "-", osmola.lower()).strip("-") or "sola"
+                    school = db.query(School).filter(School.email == slug_email).first()
+                if school is None:
                     try:
-                        school = School(name=osmola, email=f"{base}@example.si",
+                        school = School(name=osmola, email=slug_email,
                                         status=SchoolStatus.ACTIVE.value)
                         db.add(school)
                         db.flush()
