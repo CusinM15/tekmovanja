@@ -63,7 +63,17 @@ def _ustvari_startne_liste(db):
     # (brez sklica na DEFAULT_DISCIPLINE_ORDER/_disciplina_po_id — seed teče ob
     # uvozu modula, preden sta definirana; zato imena kar tu)
     for disc_id, ime in enumerate(["tek 60m", "tek 400m", "skok v daljino", "met vorteksa"], start=1):
-        disc = db.query(Discipline).filter(Discipline.name == ime).first()
+        ime_low = ime.lower()
+        # poišči disciplino po NORMALIZIRANEM imenu (odstrani ♂/♀ in pripono
+        # " M"/" Ž") — ker ima lahko baza spolne različice, npr. 'tek 60m ♀'
+        disc = None
+        for d in db.query(Discipline).all():
+            nm = (d.name or "").strip()
+            n_low = (nm.lower().replace("♂", "").replace("♀", "").strip())
+            n_low = (" " + n_low + " ").replace(" m ", " ").replace(" ž ", " ").strip()
+            if n_low == ime_low:
+                disc = d
+                break
         if disc is None:
             continue
         vpisani = {}
