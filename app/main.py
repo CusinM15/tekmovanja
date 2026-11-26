@@ -916,34 +916,20 @@ def list_start_lists(db=Depends(get_db)):
 
 
 def _csv_template(school_name=None):
-    """CSV predloga: 4 športi (ID 1-4), šola enkrat zgoraj, razred 2/3, spol M/Ž,
-    stolpec Discipline = ID-ji 1-4 (ločeni z vejico, npr. 1,2,4); skupina = šport×spol×razred.
+    """CSV predloga UČENCEV = 100 % ČISTA tabela (BREZ navodil v datoteki — navodila
+    gredo v besedilo emaila pri /send-emails). Ločilo PODPIČJE (';'), kot ga uporablja
+    Slovenjski Excel. Zgoraj šola ENKRAT (izpolnjena, če je podano school_name),
+    nato majhna ID-legenda, nato glava in prazen prostor za vnos učencev. Šole naj
+    samo izpolnijo vrstice pod glavo — ne spreminjajo ničesar drugega.
 
-    Če je podano `school_name`, je ime šole v polju »ŠOLA« ŽE IZPOLNJENO (pošljemo
-    vsaki šoli svojo predlogo) — šola naj le preveri, da je pravilno, in popravi
-    samo, če ni. Brez imena ostane predloga z napovedjo `<ime svoje šole>`."""
-    if school_name:
-        sola_vrstica = f"ŠOLA:\n{school_name}\n\n"
-        korak_sola = ("2. V polju »ŠOLA« je ime tvoje šole ŽE IZPOLNJENO — "
-                      "samo preveri ali je pravilno in popravi SAMO če ni.\n")
-    else:
-        sola_vrstica = "ŠOLA:\n<ime svoje šole>\n\n"
-        korak_sola = ("2. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n")
-    navodila = (
-        "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
-        "1. V tej datoteki je VSE ŽE PRIPRAVLJENO — ne spreminjaj glave legende ali navodil!\n"
-        + korak_sola +
-        "3. K podatkom učencev (od 20. vrstice naprej) dodaš le vrstice za svoje učence — vsaka vrsta je EN učenec in BREZ PRAZNIH VRSTIC:\n"
-        "   Vnesi Ime in priimek (npr. Ana Novak) ter Razred (samo 2 ali 3).\n"
-        "   Vnesi še Spol (M ali Ž) in Discipline (ID iz tabele 1-4 ločene s presledkom) — vsak NAJVEČ 2 disciplini.\n"
-        "4. Ne spreminjaj glave legende ali polja »ŠOLA«.\n"
-        "5. Shrani datoteko in jo vrni organizatorju.\n"
-        "\n"
-    )
-    return ("\ufeff" + navodila + sola_vrstica +
-            "ID;Disciplina (šport)\n"
-            "1;tek 60m\n2;tek 400m\n3;skok v daljino\n4;met vorteksa\n\n" +
-            "Ime;Priimek;Razred;Spol;Discipline (ID)\n")
+    Če ni school_name, ostane »<ime svoje šole>«."""
+    sola = school_name if school_name else "<ime svoje šole>"
+    prazne = "\n" * 30  # 30 praznih vrstic pod glavo za vnos učencev
+    return ("\ufeff" +
+            f"ŠOLA;{sola}\n\n" +
+            "ID;Disciplina\n1;tek 60m\n2;tek 400m\n3;skok v daljino\n4;met vorteksa\n\n" +
+            "Ime;Priimek;Razred;Spol;Discipline (ID)\n" +
+            prazne)
 
 
 # 4 discipline = 4 športi (ID 1-4); spol+razred iz vrstice določita tekmovalno
@@ -1066,10 +1052,19 @@ def send_invitations_emails(db=Depends(get_db)):
             atts.append(razpis_priloga)
         body = ("Pozdravljeni,\n\n"
                 "vabimo vas k prijavi učencev na Stankov memorial.\n\n"
-                "Izpolnite priloženo CSV datoteko (odprite jo v Excelu) in nam "
-                "vrnite izpolnjen CSV s podatki vseh učencev vaše šole. "
-                "Na vrhu datoteke so navodila — ime vaše šole je že izpolnjeno, "
-                "le preverite, da je pravilno. "
+                "V prilogi je CSV predloga. Odprite jo v Excelu — v prvi vrstici (»ŠOLA«) "
+                "je že izpolnjeno ime vaše šole. Svojega ne spreminjajte, razen če je ime "
+                "šole napačno.\n\n"
+                "V tabelo pod glavo (Ime;Priimek;Razred;Spol;Discipline (ID)) vnesite za "
+                "vsakega učenca ENO vrstico:\n"
+                "- Ime in priimek (npr. Ana Novak)\n"
+                "- Razred: samo 2 ali 3 (brez .r)\n"
+                "- Spol: M (fant) ali Ž (punca)\n"
+                "- Discipline: ID-ji iz tabele v datoteki (1 = tek 60m, 2 = tek 400m, "
+                "3 = skok v daljino, 4 = met vorteksa), ločeni s presledkom (npr. 1 2 4). "
+                "Vsak učenec naj nastopa v NAJVEČ 2 disciplinah.\n\n"
+                "Ne spreminjajte glave ali legende. Shranite datoteko (ostane .csv) in jo "
+                "vrnite organizatorju.\n\n"
                 "V prilogi je tudi razpis tekmovanja.\n\n"
                 "Hvala in lep pozdrav,\n" + _posiljatelj_ime())
         try:
