@@ -924,19 +924,19 @@ def _csv_template(school_name=None):
     samo, če ni. Brez imena ostane predloga z napovedjo `<ime svoje šole>`."""
     if school_name:
         sola_vrstica = f"ŠOLA:\n{school_name}\n\n"
-        korak_sola = ("2. V polju »ŠOLA« je ime tvoje šole ŽE IZPOLNJENO: "
-                      "samo preveri, da je pravilno, in ga popravi SAMO, če ni pravo.\n")
+        korak_sola = ("2. V polju »ŠOLA« je ime tvoje šole ŽE IZPOLNJENO — "
+                      "samo preveri ali je pravilno in popravi SAMO če ni.\n")
     else:
         sola_vrstica = "ŠOLA:\n<ime svoje šole>\n\n"
         korak_sola = ("2. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n")
     navodila = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
-        "1. V tej datoteki je VSE ŽE PRIPRAVLJENO — NIČESAR ne spreminjaj (glavo, legendo in navodila pusti pri miru).\n"
+        "1. V tej datoteki je VSE ŽE PRIPRAVLJENO — ne spreminjaj glave legende ali navodil!\n"
         + korak_sola +
-        "3. K podatkom učencev (od 20. vrstice naprej) dodaš SAMO vrstice — vsaka vrsta = EN učenec, BREZ praznih vrstic:\n"
+        "3. K podatkom učencev (od 20. vrstice naprej) dodaš le vrstice za svoje učence — vsaka vrsta je EN učenec in BREZ PRAZNIH VRSTIC:\n"
         "   Vnesi Ime in priimek (npr. Ana Novak) ter Razred (samo 2 ali 3).\n"
         "   Vnesi še Spol (M ali Ž) in Discipline (ID iz tabele 1-4 ločene s presledkom) — vsak NAJVEČ 2 disciplini.\n"
-        "4. Ne spreminjaj glave, legende ali polja »ŠOLA«.\n"
+        "4. Ne spreminjaj glave legende ali polja »ŠOLA«.\n"
         "5. Shrani datoteko in jo vrni organizatorju.\n"
         "\n"
     )
