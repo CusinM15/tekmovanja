@@ -924,21 +924,20 @@ def _csv_template(school_name=None):
     samo, če ni. Brez imena ostane predloga z napovedjo `<ime svoje šole>`."""
     if school_name:
         sola_vrstica = f"ŠOLA:\n{school_name}\n\n"
-        korak1 = ("1. V polju »ŠOLA« zgoraj je ŽE izpolnjeno ime vaše šole. "
-                  "Preverite, da je pravilno; popravite ga SAMO, če ni pravo "
-                  "(napišite ga zgoraj, SAMO ENKRAT).\n")
+        korak_sola = ("2. V polju »ŠOLA« je ime tvoje šole ŽE IZPOLNJENO: "
+                      "samo preveri, da je pravilno, in ga popravi SAMO, če ni pravo.\n")
     else:
         sola_vrstica = "ŠOLA:\n<ime svoje šole>\n\n"
-        korak1 = ("1. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n")
+        korak_sola = ("2. V polje »ŠOLA« zgoraj vpiši ime svoje šole (SAMO ENKRAT).\n")
     navodila = (
         "*** NAVODILA — KAKO IZPOLNIŠ DATOTEKO ***\n"
-        + korak1 +
-        "2. Vsako vrstico spodaj izpolni za ENEGA učenca:\n"
-        "   - Ime in priimek (npr. Ana Novak)\n"
-        "   - Razred: samo 2 ali 3 (brez .r)\n"
-        "   - Spol: M (fant) ali Ž (punca)\n"
-        "   - Discipline: ID-je iz tabele zgoraj (1-4), ločene s PRESLEDKOM — npr. 1 2 4. VAŽNO: vsak učenec naj nastopa v NAJVEČ 2 disciplinah! Če jih vpišeš več, se upošteva zgolj prvi dve.\n"
-        "3. Datoteko shrani in vrni organizatorju.\n"
+        "1. V tej datoteki je VSE ŽE PRIPRAVLJENO — NIČESAR ne spreminjaj (glavo, legendo in navodila pusti pri miru).\n"
+        + korak_sola +
+        "3. K podatkom učencev (od 20. vrstice naprej) dodaš SAMO vrstice — vsaka vrsta = EN učenec, BREZ praznih vrstic:\n"
+        "   Vnesi Ime in priimek (npr. Ana Novak) ter Razred (samo 2 ali 3).\n"
+        "   Vnesi še Spol (M ali Ž) in Discipline (ID iz tabele 1-4 ločene s presledkom) — vsak NAJVEČ 2 disciplini.\n"
+        "4. Ne spreminjaj glave, legende ali polja »ŠOLA«.\n"
+        "5. Shrani datoteko in jo vrni organizatorju.\n"
         "\n"
     )
     return ("\ufeff" + navodila + sola_vrstica +
