@@ -24,8 +24,6 @@ _DEFAULTS = {
     # Rezultati 2025.docx) — vse so nastavljive na strani Nastavitve:
     "rekordi_od_leta": "2022",     # "(naj rezultati od leta 2022 – 2. razred)"
     "rekordi_logo": "slike/rekordi_logo.png",
-    "rekordi_decek": "slike/rekordi_decek.jpeg",     # levo ob naslovu
-    "rekordi_deklica": "slike/rekordi_deklica.jpeg", # desno ob naslovu
     "rekordi_vortex": "slike/rekordi_vortex.jpeg",   # met vorteksa
     "rekordi_stadion": "slike/rekordi_stadion.jpeg", # tek 60m
     "rekordi_teki": "slike/rekordi_teki.jpeg",       # tek 400m

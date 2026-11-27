@@ -286,12 +286,8 @@
       <div id="n-razpis-predogled" style="margin-top:6px"></div></div>
     <h3 style="margin-top:18px">Slike na straneh rekordov (zadnji dve strani PDF rezultatov, po vzoru Rezultati 2025.docx)</h3>
     <div class="polje"><label>Leto od (v podnaslovu: »naj rezultati od leta …«)</label><input id="f-n-rekordi-od-leta" placeholder="npr. 2022"></div>
-    <div class="polje"><label>Logotip na straneh rekordov</label><input id="f-n-rekordi-logo" type="file" accept="image/*">
+    <div class="polje"><label>Skok v daljino (ilustracija)</label><input id="f-n-rekordi-logo" type="file" accept="image/*">
       <div id="n-rekordi-logo-predogled" style="margin-top:6px"></div></div>
-    <div class="polje"><label>Ilustracija: deček (ob naslovu)</label><input id="f-n-rekordi-decek" type="file" accept="image/*">
-      <div id="n-rekordi-decek-predogled" style="margin-top:6px"></div></div>
-    <div class="polje"><label>Ilustracija: deklica (ob naslovu)</label><input id="f-n-rekordi-deklica" type="file" accept="image/*">
-      <div id="n-rekordi-deklica-predogled" style="margin-top:6px"></div></div>
     <div class="polje"><label>Ilustracija: met vorteksa</label><input id="f-n-rekordi-vortex" type="file" accept="image/*">
       <div id="n-rekordi-vortex-predogled" style="margin-top:6px"></div></div>
     <div class="polje"><label>Ilustracija: tek 60 m</label><input id="f-n-rekordi-stadion" type="file" accept="image/*">
@@ -406,8 +402,8 @@ function natovoriNastavitve(){
     if (s.razpis_url){ rp.innerHTML = '<a href="' + s.razpis_url + '" target="_blank" style="color:var(--modra);text-decoration:underline">Naložen razpis (PDF) 📄</a> <small style="color:#7f8c8d">— izberite novega zgoraj, če ga želite zamenjati</small>'; }
     else rp.innerHTML = '<span class="tiha">(ni naloženega razpisa — k vabilom bo pripet samodejen razpis)</span>';
     $('f-n-rekordi-od-leta').value = s.rekordi_od_leta || '';
-    var rek_slike = [['rekordi_logo','n-rekordi-logo-predogled'],['rekordi_decek','n-rekordi-decek-predogled'],
-                     ['rekordi_deklica','n-rekordi-deklica-predogled'],['rekordi_vortex','n-rekordi-vortex-predogled'],
+    var rek_slike = [['rekordi_logo','n-rekordi-logo-predogled'],
+                     ['rekordi_vortex','n-rekordi-vortex-predogled'],
                      ['rekordi_stadion','n-rekordi-stadion-predogled'],['rekordi_teki','n-rekordi-teki-predogled']];
     for (var i = 0; i < rek_slike.length; i++){
       var k = rek_slike[i][0], el = $(rek_slike[i][1]);
@@ -427,7 +423,7 @@ function shraniNastavitve(){
   if ($('f-n-logo').files && $('f-n-logo').files[0]) fd.append('logo', $('f-n-logo').files[0]);
   if ($('f-n-slika').files && $('f-n-slika').files[0]) fd.append('slika', $('f-n-slika').files[0]);
   if ($('f-n-razpis').files && $('f-n-razpis').files[0]) fd.append('razpis', $('f-n-razpis').files[0]);
-  var rek_polja = ['rekordi_logo','rekordi_decek','rekordi_deklica','rekordi_vortex','rekordi_stadion','rekordi_teki'];
+  var rek_polja = ['rekordi_logo','rekordi_vortex','rekordi_stadion','rekordi_teki'];
   for (var i = 0; i < rek_polja.length; i++){
     var inp = $('f-n-' + rek_polja[i]);
     if (inp.files && inp.files[0]) fd.append(rek_polja[i], inp.files[0]);

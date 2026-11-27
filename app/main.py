@@ -1663,8 +1663,7 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
                             logo_path=_logo, slika_path=_slika,
                             rekordi_title=_s["rekordi_title"], kraj_datum=_s.get("kraj_datum", ""),
                             rekordi_od_leta=_s.get("rekordi_od_leta", "2022"),
-                            rekordi_logo=_sl("rekordi_logo"), rekordi_decek=_sl("rekordi_decek"),
-                            rekordi_deklica=_sl("rekordi_deklica"), rekordi_vortex=_sl("rekordi_vortex"),
+                            rekordi_logo=_sl("rekordi_logo"), rekordi_vortex=_sl("rekordi_vortex"),
                             rekordi_stadion=_sl("rekordi_stadion"), rekordi_teki=_sl("rekordi_teki"))
     from datetime import datetime as _dt
     filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
@@ -1718,8 +1717,7 @@ def email_results(
         rekordi_title=_s["rekordi_title"],
         kraj_datum=_s.get("kraj_datum", ""),
         rekordi_od_leta=_s.get("rekordi_od_leta", "2022"),
-        rekordi_logo=_sl("rekordi_logo"), rekordi_decek=_sl("rekordi_decek"),
-        rekordi_deklica=_sl("rekordi_deklica"), rekordi_vortex=_sl("rekordi_vortex"),
+        rekordi_logo=_sl("rekordi_logo"), rekordi_vortex=_sl("rekordi_vortex"),
         rekordi_stadion=_sl("rekordi_stadion"), rekordi_teki=_sl("rekordi_teki"),
     )
 
@@ -2045,8 +2043,8 @@ def get_nastavitve():
         "slika_url": f"/static/{n_s}" if (nastavitve.abs_path(n_s)).exists() else None,
     }
     # slike na straneh rekordov (po vzoru Rezultati 2025.docx)
-    for k in ("rekordi_od_leta", "rekordi_logo", "rekordi_decek", "rekordi_deklica",
-              "rekordi_vortex", "rekordi_stadion", "rekordi_teki"):
+    for k in ("rekordi_od_leta", "rekordi_logo",
+                 "rekordi_vortex", "rekordi_stadion", "rekordi_teki"):
         if k == "rekordi_od_leta":
             out[k] = d.get(k, "2022")
         else:
@@ -2066,8 +2064,6 @@ async def save_nastavitve(
     slika: Optional[UploadFile] = File(None),
     razpis: Optional[UploadFile] = File(None),
     rekordi_logo: Optional[UploadFile] = File(None),
-    rekordi_decek: Optional[UploadFile] = File(None),
-    rekordi_deklica: Optional[UploadFile] = File(None),
     rekordi_vortex: Optional[UploadFile] = File(None),
     rekordi_stadion: Optional[UploadFile] = File(None),
     rekordi_teki: Optional[UploadFile] = File(None),
@@ -2086,8 +2082,8 @@ async def save_nastavitve(
     # shrani naložene slike
     import uuid, re as _re
     _slikovni_kljuci = [("logo", logo), ("slika", slika), ("razpis", razpis),
-                        ("rekordi_logo", rekordi_logo), ("rekordi_decek", rekordi_decek),
-                        ("rekordi_deklica", rekordi_deklica), ("rekordi_vortex", rekordi_vortex),
+                        ("rekordi_logo", rekordi_logo),
+                        ("rekordi_vortex", rekordi_vortex),
                         ("rekordi_stadion", rekordi_stadion), ("rekordi_teki", rekordi_teki)]
     for key, up in _slikovni_kljuci:
         if up is None:

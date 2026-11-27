@@ -412,7 +412,7 @@ def _cell_par(text, font, size=10):
     return Paragraph(text if text is not None else "", st)
 
 
-def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO", kraj_datum="Jesenice, 2. 10. 2025", sola_ime="OSNOVNA ŠOLA TONETA ČUFARJA JESENICE", rekordi_od_leta="2022", rekordi_logo=None, rekordi_decek=None, rekordi_deklica=None, rekordi_vortex=None, rekordi_stadion=None, rekordi_teki=None):
+def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO", kraj_datum="Jesenice, 2. 10. 2025", sola_ime="OSNOVNA ŠOLA TONETA ČUFARJA JESENICE", rekordi_od_leta="2022", rekordi_logo=None, rekordi_vortex=None, rekordi_stadion=None, rekordi_teki=None):
     """PDF z rezultati (reportlab):
         1.  uvodna stran: šola + logotip/slika + ime tekmovanja + podnaslov + kraj/datum
             (po vzoru Rezultati 2025.docx),
@@ -809,7 +809,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     def _slika_za_disciplino(ime):
         n = (ime or "").replace("♀", "").replace("♂", "").strip().lower()
         return {"met vorteksa": rekordi_vortex,
-                "skok v daljino": rekordi_decek,   # skok nima lastne slike → druga (deček), zamenljivo v Nastavitvah
+                "skok v daljino": rekordi_logo,   # slika, shranjena kot "Rekordi logotip", je PRAVZAPRAV skok v daljino
                 "tek 60m": rekordi_stadion,
                 "tek 400m": rekordi_teki}.get(n)
 
