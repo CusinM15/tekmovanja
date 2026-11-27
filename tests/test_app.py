@@ -898,3 +898,60 @@ def test_izbrisi_vse_startne_liste():
     assert "PO 0" in p.stdout, f"po izbrisu mora biti 0 list:\n{p.stdout}\n{p.stderr}"
     assert "UCENCI 120" in p.stdout, f"učenci morajo OSTATI:\n{p.stdout}\n{p.stderr}"
     assert "DISCIPLINE 4" in p.stdout, f"discipline morajo OSTATI:\n{p.stdout}\n{p.stderr}"
+
+
+def test_results_pdf_vrstni_red_in_rekordi_po_vzoru_docx():
+    """PDF REZULTATOV (Pošlji rezultate šolam): (1) najprej vseh 8 skupin 2.
+    razreda, nato 8 za 3. razred; (2) rekordi (zadnji dve strani) po vzoru
+    Rezultati 2025.docx — SUPER STANKO + podnaslov »od leta 2022 – 2. razred«,
+    koloni Fantje/Punce, docx vrstni red disciplin (met, skok, 60m, 400m).
+    Teče na LOČENI začasni bazi (subprocess), da ni odvisen od stanja
+    session baze (prejšnji testi spreminjajo imena disciplin/podatke)."""
+    if shutil.which("pdftotext") is None or shutil.which("pdfinfo") is None:
+        pytest.skip("pdftotext/pdfinfo nista na voljo")
+    import base64
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-pdf-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, base64\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "with TestClient(app) as c:\n"
+        "    c.post('/start-lists/generate')\n"
+        "    r = c.get('/results-pdf')\n"
+        "    print('STATUS', r.status_code)\n"
+        "    print('PDF', base64.b64encode(r.content).decode())\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=180, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    assert "STATUS 200" in p.stdout, p.stdout + p.stderr
+    b64 = [l for l in p.stdout.splitlines() if l.startswith("PDF ")][0][4:]
+    pdf_data = base64.b64decode(b64)
+    assert pdf_data.startswith(b"%PDF"), "results-pdf mora biti pravi PDF"
+    pdf = os.path.join(os.path.dirname(db_path), "r.pdf")
+    with open(pdf, "wb") as f:
+        f.write(pdf_data)
+
+    pi = subprocess.run(["pdfinfo", pdf], capture_output=True, text=True)
+    pages = [l for l in pi.stdout.splitlines() if l.strip().startswith("Pages")]
+    assert pages and pages[0].split()[-1] == "20", f"20 strani, dobil: {pages}"
+
+    def stran(n):
+        q = subprocess.run(["pdftotext", "-f", str(n), "-l", str(n), pdf, "-"],
+                           capture_output=True, text=True)
+        return q.stdout
+
+    s3, s11, s19, s20 = stran(3), stran(11), stran(19), stran(20)
+    assert "2.r" in s3 and "2.r" in stran(10), "strani 3–10: 2. razred (8 skupin)"
+    assert "3.r" in s11 and "2.r" not in s11, "stran 11: 3. razred (najprej vseh 8 za 2.r)"
+    assert "SUPER STANKO" in s19 and "SUPER STANKO" in s20, "rekordi: SUPER STANKO (2 strani)"
+    assert "naj rezultati od leta 2022 – 2. razred" in s19, "podnaslov rekordov 2.r (docx vzorec)"
+    assert "3. razred" in s20, "podnaslov rekordov 3.r"
+    assert "Fantje" in s19 and "Punce" in s19, "dve koloni Fantje/Punce"
+    poz = [s19.find(x) for x in ("met vorteksa", "skok v daljino", "tek 60m", "tek 400m")]
+    assert all(p >= 0 for p in poz) and poz == sorted(poz), \
+        f"docx vrstni red disciplin v rekordih: {poz}"
+    assert "(" in s19 and "202" in s19, "rekord z letnico v oklepaju"

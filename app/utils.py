@@ -412,13 +412,15 @@ def _cell_par(text, font, size=10):
     return Paragraph(text if text is not None else "", st)
 
 
-def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO", kraj_datum="Jesenice, 2. 10. 2025", sola_ime="OSNOVNA ŠOLA TONETA ČUFARJA JESENICE"):
-    """PDF z rezultati (reportlab) — 20 strani:
+def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda", schools=None, pupils=None, records=None, logo_path=None, slika_path=None, rekordi_title="SUPER STANKO", kraj_datum="Jesenice, 2. 10. 2025", sola_ime="OSNOVNA ŠOLA TONETA ČUFARJA JESENICE", rekordi_od_leta="2022", rekordi_logo=None, rekordi_decek=None, rekordi_deklica=None, rekordi_vortex=None, rekordi_stadion=None, rekordi_teki=None):
+    """PDF z rezultati (reportlab):
         1.  uvodna stran: šola + logotip/slika + ime tekmovanja + podnaslov + kraj/datum
             (po vzoru Rezultati 2025.docx),
         2.  rezultati po šolah (razvrstitev po točkah),
-        3–18. vsaka tekmovalna skupina (4 discipline × M/Ž × 2.r/3.r = 16) na svoji strani,
-        19–20. rekordi (2.r, nato 3.r) — SUPER STANKO.
+        3–10. vseh 8 skupin 2. razreda (4 discipline × M/Ž) na svojih straneh,
+        11–18. vseh 8 skupin 3. razreda,
+        19–20. rekordi (2.r, nato 3.r) — SUPER STANKO, po vzoru Rezultati 2025.docx
+            (logotip + ilustracije, dve koloni Fantje/Punce, 'ime, šola — rezultat (leto)').
     """
     from io import BytesIO
     from reportlab.lib.pagesizes import A4
@@ -555,6 +557,9 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         for spol in ("M", "Ž"):
             for raz in ("2.r", "3.r"):
                 skupine.append((_did, raz, spol))
+    # Vrstni red strani: najprej VSEH 8 skupin 2. razreda, nato 8 za 3. razred
+    # (uporabnik: "začni najprej z vsemi osmimi za 2 razred, nato 8 za 3 razred").
+    skupine.sort(key=lambda g: (g[1], g[0], g[2]))
     _skupine_ids = {g[0] for g in skupine}
     # evente omejimo na te discipline (sirote/stari športi ne dodajajo strani)
     events = [ev for ev in events
@@ -684,15 +689,16 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
                  _cell_par("Čas / dolžina", font, size=9),
                  _cell_par("Opombe", font, size=9)]]
         for i, (pid, p, ev) in enumerate(ucenci, 1):
-            if ev is not None:
+            if ev is not None and ev.time is not None:
                 prikaz_mesta = str(i) + "."
-                cas_val = f"{ev.time:.2f} {enota_za_disciplino(ime)}" if ev.time is not None else "—"
+                cas_val = f"{ev.time:.2f} {enota_za_disciplino(ime)}"
                 opombe = (ev.notes or "") or ""
             else:
-                # prijavljen, a brez rezultata — mesto in čas pustimo prazna (—)
+                # prijavljen, a brez zabeleženega rezultata — na polju za rezultat
+                # je "-", učenec pa je na koncu seznama (sort zgoraj)
                 prikaz_mesta = "—"
-                cas_val = "—"
-                opombe = "prijavljen"
+                cas_val = "-"
+                opombe = (ev.notes or "") if ev is not None else ""
             data.append([
                 _cell_par(prikaz_mesta, font, size=9),
                 _cell_par(f"{p.first_name} {p.last_name}" if p else "—", font, size=9),
@@ -703,45 +709,114 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         elems.append(_tab(data, [1.6 * cm, 4.6 * cm, 4.6 * cm, 2.8 * cm, 2.4 * cm]))
         elems.append(PageBreak())
 
-    # ── 19–20. REKORDI (2.r, nato 3.r) — SUPER STANKO ───────────────
+    # ── REKORDI (2.r, nato 3.r) — po vzoru Rezultati 2025.docx ──────────
+    from app.models import disciplina_smer as _disc_smer
+
+    def _rim(r):
+        ime = (r.discipline.name if r.discipline else f"ID {r.discipline_id}")
+        return ime.replace("♀", "").replace("♂", "").strip()
+
+    # docx vrstni red disciplin: met vorteksa, skok v daljino, tek 60m, tek 400m
+    _docx_red = {"met vorteksa": 0, "skok v daljino": 1, "tek 60m": 2, "tek 400m": 3}
+
+    def _disc_po_docx(ime):
+        n = (ime or "").replace("♀", "").replace("♂", "").strip().lower()
+        return _docx_red.get(n, 99)
+
+    # ilustracija discipline (nastavljivo v Nastavitvah)
+    def _slika_za_disciplino(ime):
+        n = (ime or "").replace("♀", "").replace("♂", "").strip().lower()
+        return {"met vorteksa": rekordi_vortex,
+                "tek 60m": rekordi_stadion,
+                "tek 400m": rekordi_teki}.get(n)
+
+    def _rek_vrednost(r, ime_d):
+        """'28,5 cm (2024)' — rezultat z letnico (s piko, ne vejico, kot v docx)."""
+        if r is None or r.time is None:
+            return None
+        v = f"{r.time:.2f}".replace(".", ",")
+        leto = f" ({r.date_recorded.year})" if r.date_recorded else ""
+        return f"{v} {enota_za_disciplino(ime_d)}{leto}"
+
+    def _rek_ime(r):
+        if r is None:
+            return "—"
+        return r.pupil_name or (f"{r.pupil.first_name} {r.pupil.last_name}" if r.pupil else "—")
+
+    def _rek_sola(r):
+        if r is None:
+            return "—"
+        return r.school_name or (r.pupil.school.name if r.pupil and r.pupil.school else "—")
+
     for raz in ("2.r", "3.r"):
-        elems.append(Paragraph(rekordi_title, styles["Title"]))
-        elems.append(Spacer(1, 0.2 * cm))
-        elems.append(Paragraph(f"Rekordi — {raz} razred (vse discipline)", styles["Heading2"]))
-        elems.append(Spacer(1, 0.3 * cm))
+        # logotip zgoraj (sredinsko)
+        rl = _im(rekordi_logo, 2.8 * cm, 2.4 * cm)
+        if rl is not None:
+            t_rl = Table([[rl]], colWidths=[2.8 * cm], hAlign="CENTER")
+            t_rl.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+            elems.append(t_rl)
+            elems.append(Spacer(1, 0.25 * cm))
+        # naslov + podnaslov (kot v Rezultati 2025.docx)
+        elems.append(_center(rekordi_title, styles["Title"]))
+        elems.append(_center(f"(naj rezultati od leta {rekordi_od_leta} – {raz.replace('.r', '.')} razred)",
+                             styles["Normal"]))
+        elems.append(Spacer(1, 0.4 * cm))
+
         rek_raz = [r for r in records if getattr(r, "pupil_grade", None) == raz]
-        if not rek_raz:
+        # disciplina → najboljši rekord za vsak spol (M/Ž)
+        by_disc = {}
+        for r in rek_raz:
+            ime_r = _rim(r)
+            smer = _disc_smer(ime_r)
+            spol_r = (getattr(r, "pupil_gender", None)
+                      or (r.pupil.gender if r.pupil else None)) or "?"
+            kljuc = (ime_r, spol_r)
+            stari = by_disc.get(kljuc)
+            if stari is None or r.time is None:
+                if stari is None:
+                    by_disc[kljuc] = r
+            elif (r.time < stari.time if smer == "lower" else r.time > stari.time):
+                by_disc[kljuc] = r
+        disc_imena = sorted({k[0] for k in by_disc}, key=_disc_po_docx)
+
+        if not disc_imena:
             elems.append(Paragraph("Ni še zabeleženih rekordov.", styles["Normal"]))
             elems.append(PageBreak())
             continue
-        def _rim(r):
-            ime = (r.discipline.name if r.discipline else f"ID {r.discipline_id}")
-            return ime.replace("♀", "").replace("♂", "").strip()
-        from app.models import disciplina_smer
-        def _rrec_key(r):
-            ime = _rim(r)
-            smer = disciplina_smer(ime)
-            t = r.time
-            if t is None:
-                return (ime, 1, 0)
-            return (ime, 0, t if smer == "lower" else -t)
-        razvr = sorted(rek_raz, key=_rrec_key)
-        data = [[_cell_par("Disciplina", font, size=9),
-                 _cell_par("Spol", font, size=9),
-                 _cell_par("Učenec", font, size=9),
-                 _cell_par("Šola", font, size=9),
-                 _cell_par("Rezultat", font, size=9)]]
-        for r in razvr:
-            spol = getattr(r, "pupil_gender", None) or (r.pupil.gender if r.pupil else None)
-            leto = f" ({r.date_recorded.year})" if r.date_recorded else ""
-            data.append([
-                _cell_par(_rim(r), font, size=9),
-                _cell_par((spol_ime(spol) if spol in ("M", "Ž") else (spol or "—")), font, size=9),
-                _cell_par((r.pupil_name or "—"), font, size=9),
-                _cell_par((r.school_name or "—"), font, size=9),
-                _cell_par(f"{r.time:.2f} {enota_za_disciplino(_rim(r))}{leto}" if r.time is not None else "—", font, size=9),
-            ])
-        elems.append(_tab(data, [3.8 * cm, 1.9 * cm, 4.4 * cm, 4.4 * cm, 3.0 * cm]))
+
+        # dve koloni (Fantje | Punce), ilustracija discipline levo
+        data = [[_cell_par("", font, size=9),
+                 _cell_par("Disciplina", font, size=9),
+                 _cell_par("Fantje", font, size=9),
+                 _cell_par("Punce", font, size=9)]]
+        for ime_d in disc_imena:
+            img_d = _im(_slika_za_disciplino(ime_d), 1.8 * cm, 1.6 * cm)
+            cel_slika = img_d if img_d is not None else _cell_par("", font, size=9)
+            rM = by_disc.get((ime_d, "M"))
+            rZ = by_disc.get((ime_d, "Ž"))
+            def _celica(r):
+                v = _rek_vrednost(r, ime_d)
+                if v is None:
+                    return _cell_par("—", font, size=9)
+                return _cell_par(f"{_rek_ime(r)}, {_rek_sola(r)} — {v}", font, size=9)
+            data.append([cel_slika,
+                         _cell_par(ime_d, font, size=9),
+                         _celica(rM),
+                         _celica(rZ)])
+        t_rek = Table(data, repeatRows=1,
+                      colWidths=[1.8 * cm, 3.6 * cm, 5.2 * cm, 5.2 * cm])
+        t_rek.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), font),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f2f2f2")]),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elems.append(t_rek)
         elems.append(PageBreak())
 
     doc.build(elems)

@@ -1648,11 +1648,19 @@ def generate_results_pdf(event_id: Optional[int] = None, discipline_id: Optional
     _logo = str(_nast.abs_path(_s["logo"])) if _nast.abs_path(_s["logo"]).exists() else None
     _slika = str(_nast.abs_path(_s["slika"])) if _nast.abs_path(_s["slika"]).exists() else None
 
+    def _sl(kljuc):
+        v = _s.get(kljuc)
+        return str(_nast.abs_path(v)) if (v and _nast.abs_path(v).exists()) else None
+
     pdf = results_pdf_bytes(events, title=_s["tekmovanje_title"],
                             subtitle="Tekmovanje v atletiki za učence 2. in 3. razreda",
                             schools=schools, pupils=pupils, records=records,
                             logo_path=_logo, slika_path=_slika,
-                            rekordi_title=_s["rekordi_title"], kraj_datum=_s.get("kraj_datum", ""))
+                            rekordi_title=_s["rekordi_title"], kraj_datum=_s.get("kraj_datum", ""),
+                            rekordi_od_leta=_s.get("rekordi_od_leta", "2022"),
+                            rekordi_logo=_sl("rekordi_logo"), rekordi_decek=_sl("rekordi_decek"),
+                            rekordi_deklica=_sl("rekordi_deklica"), rekordi_vortex=_sl("rekordi_vortex"),
+                            rekordi_stadion=_sl("rekordi_stadion"), rekordi_teki=_sl("rekordi_teki"))
     from datetime import datetime as _dt
     filename = f"rezultati_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf"
     return Response(
@@ -1688,6 +1696,11 @@ def email_results(
     _s = _nast.get()
     _logo = str(_nast.abs_path(_s["logo"])) if _nast.abs_path(_s["logo"]).exists() else None
     _slika = str(_nast.abs_path(_s["slika"])) if _nast.abs_path(_s["slika"]).exists() else None
+
+    def _sl(kljuc):
+        v = _s.get(kljuc)
+        return str(_nast.abs_path(v)) if (v and _nast.abs_path(v).exists()) else None
+
     pdf = results_pdf_bytes(
         events,
         title=_s["tekmovanje_title"],
@@ -1699,6 +1712,10 @@ def email_results(
         slika_path=_slika,
         rekordi_title=_s["rekordi_title"],
         kraj_datum=_s.get("kraj_datum", ""),
+        rekordi_od_leta=_s.get("rekordi_od_leta", "2022"),
+        rekordi_logo=_sl("rekordi_logo"), rekordi_decek=_sl("rekordi_decek"),
+        rekordi_deklica=_sl("rekordi_deklica"), rekordi_vortex=_sl("rekordi_vortex"),
+        rekordi_stadion=_sl("rekordi_stadion"), rekordi_teki=_sl("rekordi_teki"),
     )
 
     # Get active schools
@@ -2004,7 +2021,12 @@ def get_nastavitve():
     d = nastavitve.get()
     n_l = d["logo"]; n_s = d["slika"]
     _raz = d.get("razpis")
-    return {
+
+    def _url(k):
+        v = d.get(k)
+        return f"/static/{v}" if (v and (nastavitve.abs_path(v)).exists()) else None
+
+    out = {
         "ime_sole": d.get("ime_sole", ""),
         "tekmovanje_title": d["tekmovanje_title"],
         "rekordi_title": d["rekordi_title"],
@@ -2017,6 +2039,15 @@ def get_nastavitve():
         "logo_url": f"/static/{n_l}" if (nastavitve.abs_path(n_l)).exists() else None,
         "slika_url": f"/static/{n_s}" if (nastavitve.abs_path(n_s)).exists() else None,
     }
+    # slike na straneh rekordov (po vzoru Rezultati 2025.docx)
+    for k in ("rekordi_od_leta", "rekordi_logo", "rekordi_decek", "rekordi_deklica",
+              "rekordi_vortex", "rekordi_stadion", "rekordi_teki"):
+        if k == "rekordi_od_leta":
+            out[k] = d.get(k, "2022")
+        else:
+            out[k] = d.get(k)
+            out[k + "_url"] = _url(k)
+    return out
 
 
 @app.post("/api/nastavitve", response_model=dict, summary="Shrani nastavitve tekmovanja")
@@ -2025,23 +2056,35 @@ async def save_nastavitve(
     tekmovanje_title: str = Form(""),
     rekordi_title: str = Form(""),
     kraj_datum: str = Form(""),
+    rekordi_od_leta: str = Form(""),
     logo: Optional[UploadFile] = File(None),
     slika: Optional[UploadFile] = File(None),
     razpis: Optional[UploadFile] = File(None),
+    rekordi_logo: Optional[UploadFile] = File(None),
+    rekordi_decek: Optional[UploadFile] = File(None),
+    rekordi_deklica: Optional[UploadFile] = File(None),
+    rekordi_vortex: Optional[UploadFile] = File(None),
+    rekordi_stadion: Optional[UploadFile] = File(None),
+    rekordi_teki: Optional[UploadFile] = File(None),
 ):
-    """Shrani imeni + (opcijsko) naložena logotip/slika/razpis (PDF)."""
+    """Shrani imeni + (opcijsko) naložene slike (logo/slika/razpis + slike rekordov)."""
     from app import nastavitve
     from app.database import get_session
     pod = {k: v.strip() for k, v in [("ime_sole", ime_sole),
                                      ("tekmovanje_title", tekmovanje_title),
                                      ("rekordi_title", rekordi_title),
-                                     ("kraj_datum", kraj_datum)] if v and v.strip()}
+                                     ("kraj_datum", kraj_datum),
+                                     ("rekordi_od_leta", rekordi_od_leta)] if v and v.strip()}
     # mapa za naložene slike MORA obstajati PRED pisanjem (na svežem checkoutu ni v gitu)
     from app import nastavitve as _nst
     (_nst.abs_path("uploads")).mkdir(parents=True, exist_ok=True)
     # shrani naložene slike
     import uuid, re as _re
-    for key, up in (("logo", logo), ("slika", slika), ("razpis", razpis)):
+    _slikovni_kljuci = [("logo", logo), ("slika", slika), ("razpis", razpis),
+                        ("rekordi_logo", rekordi_logo), ("rekordi_decek", rekordi_decek),
+                        ("rekordi_deklica", rekordi_deklica), ("rekordi_vortex", rekordi_vortex),
+                        ("rekordi_stadion", rekordi_stadion), ("rekordi_teki", rekordi_teki)]
+    for key, up in _slikovni_kljuci:
         if up is None:
             continue
         data = await up.read()
