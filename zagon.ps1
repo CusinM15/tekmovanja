@@ -1,16 +1,19 @@
 # ============================================================
-#  zagon.ps1 — Tekmovanja (Stankov memorial) na Windows
+#  zagon.ps1 - Tekmovanja (Stankov memorial) na Windows
 #  Naredi VSE: 1) git pull  2) venv + pip install -r requirements.txt  3) python run.py
-#  Skripto zaženi iz kateregakoli imenika (sama najde repo ob sebi).
+#  Skripto zazeni iz kateregakoli imenika (sama najde repo ob sebi).
+#  POZOR: datoteka je namenoma ASCII-only (Windows PowerShell 5.1
+#  bere .ps1 brez BOM kot Windows-1252, ne UTF-8 - sumniki bi
+#  zlomili stringe). Ne dodajaj sumnikov/specialnih znakov!
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
-# 0) Greva v koren repozitorija (mapa, kjer leži tale skripta)
+# 0) Greva v koren repozitorija (mapa, kjer lezi tale skripta)
 Set-Location $PSScriptRoot
 Write-Host ""
 Write-Host "==============================================" -ForegroundColor DarkGray
-Write-Host " Tekmovanja — zagon (repo: $PSScriptRoot)" -ForegroundColor Cyan
+Write-Host " Tekmovanja - zagon (repo: $PSScriptRoot)" -ForegroundColor Cyan
 Write-Host "==============================================" -ForegroundColor DarkGray
 
 # 1) git pull
@@ -18,7 +21,7 @@ Write-Host ""
 Write-Host "[1/4] git pull ..." -ForegroundColor Cyan
 git pull
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "GIT PULL JE SPODLETEL — imas lokalne spremembe ali ni povezave?" -ForegroundColor Red
+    Write-Host "GIT PULL JE SPODLETEL - imas lokalne spremembe ali ni povezave?" -ForegroundColor Red
     Write-Host "Preveri z: git status  (in shrani/commitni svoje spremembe)." -ForegroundColor Yellow
     exit 1
 }
@@ -43,7 +46,7 @@ if (-not (Test-Path "venv")) {
     if ($LASTEXITCODE -ne 0) { Write-Host "Napaka pri ustvarjanju venv." -ForegroundColor Red; exit 1 }
 }
 Write-Host ""
-Write-Host "[3/4] Aktiviram venv in nameščam requirements ..." -ForegroundColor Cyan
+Write-Host "[3/4] Aktiviram venv in namescam requirements ..." -ForegroundColor Cyan
 & ".\venv\Scripts\Activate.ps1"
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
@@ -54,7 +57,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 4) zagon
 Write-Host ""
-Write-Host "[4/4] Zaganjam run.py — app na http://127.0.0.1:8000" -ForegroundColor Green
+Write-Host "[4/4] Zaganjam run.py - app na http://127.0.0.1:8000" -ForegroundColor Green
 Write-Host "      (ustavi z Ctrl+C)" -ForegroundColor DarkGray
 Write-Host ""
 python run.py
