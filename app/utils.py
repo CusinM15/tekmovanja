@@ -13,11 +13,30 @@ DB = None
 
 
 def enota_za_disciplino(ime):
-    """Enota rezultata glede na disciplino: skok v daljino in met vorteksa → cm, drugo → s."""
+    """Enota rezultata glede na disciplino: met vorteksa → m, skok v daljino → cm, drugo → s."""
     n = (ime or "").replace("♂", "").replace("♀", "").lower()
-    if "skok v daljino" in n or "vorteksa" in n:
+    if "vorteksa" in n:
+        return "m"
+    if "skok v daljino" in n:
         return "cm"
     return "s"
+
+
+def cas_lepo(t, ime):
+    """Lep izpis rezultata, enak kot v UI (JS casLepo):
+    - teki ≥ 60 s → '1:19.00' (mm:ss, pika, brez enote)
+    - sicer → številka z vejico + enota (npr. '10,50 s', '28,50 m', '321,00 cm')."""
+    if t is None:
+        return ""
+    e = enota_za_disciplino(ime)
+    if e == "s" and t >= 60:
+        m = int(t // 60)
+        rem = t - m * 60
+        s = f"{rem:.2f}"
+        if rem < 10:
+            s = "0" + s
+        return f"{m}:{s}"
+    return f"{t:.2f}".replace(".", ",") + " " + e
 
 
 def get_db_session():
@@ -753,7 +772,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
             continue
         elems.append(Spacer(1, 0.2 * cm))
         def _fmt(t):
-            return f"{t:.2f}".replace(".", ",") + " " + enota_za_disciplino(ime)
+            return cas_lepo(t, ime)
         if multi:
             data = [[_cell_par("Mesto", font, size=9),
                      _cell_par("Učenec", font, size=9),
@@ -814,12 +833,12 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
                 "tek 400m": rekordi_teki}.get(n)
 
     def _rek_vrednost(r, ime_d):
-        """'28,5 cm (2024)' — rezultat z letnico (s piko, ne vejico, kot v docx)."""
+        """'28,50 m (2024)' ali '1:19.00 (2024)' — rezultat z letnico (po cas_lepo)."""
         if r is None or r.time is None:
             return None
-        v = f"{r.time:.2f}".replace(".", ",")
+        v = cas_lepo(r.time, ime_d)
         leto = f" ({r.date_recorded.year})" if r.date_recorded else ""
-        return f"{v} {enota_za_disciplino(ime_d)}{leto}"
+        return f"{v}{leto}"
 
     def _rek_ime(r):
         if r is None:
@@ -930,8 +949,8 @@ def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
     elems.append(Paragraph(f"{discipline_name} — {grade} razred", styles["Title"]))
     elems.append(Spacer(1, 0.3 * cm))
 
-    # met vorteksa in skok v daljino: 3 polja za vpis rezultata (3 poskusi)
-    multi = (enota_za_disciplino(discipline_name) == "cm")
+    # met vorteksa (enota m) in skok v daljino (cm): 3 polja za vpis rezultata
+    multi = (enota_za_disciplino(discipline_name) in ("m", "cm"))
 
     if multi:
         header = [_cell_par("Učenec", font, size=10),

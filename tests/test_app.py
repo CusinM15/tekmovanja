@@ -520,13 +520,18 @@ def test_delete_data_nato_ponoven_uvoz_csv(client):
 
 
 def test_enota_za_disciplino():
-    """Enota rezultata je odvisna od discipline: skok v daljino in met vorteksa → cm,
-    tek → s."""
-    from app.utils import enota_za_disciplino
-    assert enota_za_disciplino("met vorteksa ♂") == "cm"
+    """Enota rezultata je odvisna od discipline: met vorteksa → m, skok v daljino → cm, tek → s."""
+    from app.utils import enota_za_disciplino, cas_lepo
+    assert enota_za_disciplino("met vorteksa ♂") == "m"
     assert enota_za_disciplino("skok v daljino ♀") == "cm"
     assert enota_za_disciplino("tek 60m ♂") == "s"
     assert enota_za_disciplino("") == "s"
+    # lep izpis: teki ≥ 60 s kot mm:ss, drugače z enoto
+    assert cas_lepo(79, "tek 400m") == "1:19.00"
+    assert cas_lepo(65.5, "tek 400m") == "1:05.50"
+    assert cas_lepo(10.5, "tek 60m") == "10,50 s"
+    assert cas_lepo(28.5, "met vorteksa") == "28,50 m"
+    assert cas_lepo(321, "skok v daljino") == "321,00 cm"
 
 
 def test_disciplina_smer_met_vorteksa():
@@ -1002,10 +1007,10 @@ def test_results_pdf_met_zdruzi_poskuse_na_najboljsega():
     pt = subprocess.run(["pdftotext", pdf, "-"], capture_output=True, text=True)
     t = pt.stdout
     # met vorteksa ima 3 STOLPCE za rezultat — prikazani so VSI trije poskusi
-    # (najboljši prvi, ob izenačenem drugi itd.). Luka: 12,00 / 9,00 / 8,00.
-    i12 = t.find("12,00 cm"); i9 = t.find("9,00 cm"); i8 = t.find("8,00 cm")
-    assert i12 >= 0 and i9 >= 0 and i8 >= 0, f"vsi trije poskusi met morajo biti prikazani:\n{t}"
-    assert i12 < i9 < i8, f"najboljši (12,00) mora biti prvi, nato 9,00, 8,00:\n{t}"
+    # (najboljši prvi, ob izenačenem drugi itd.), v enoti m. Luka: 12,00 / 9,00 / 8,00 m.
+    i12 = t.find("12,00 m"); i9 = t.find("9,00 m"); i8 = t.find("8,00 m")
+    assert i12 >= 0 and i9 >= 0 and i8 >= 0, f"vsi trije poskusi met (m) morajo biti prikazani:\n{t}"
+    assert i12 < i9 < i8, f"najboljši (12,00 m) mora biti prvi, nato 9,00, 8,00:\n{t}"
 
 
 def test_results_pdf_16_skupin_tudi_z_negenericnimi_imena_disciplin():
