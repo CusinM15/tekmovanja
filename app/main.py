@@ -2121,15 +2121,8 @@ def start_list_pdf(start_list_id: int, db=Depends(get_db)):
     if not start_list:
         raise HTTPException(status_code=404, detail="Start list not found")
     discipline_name = start_list.discipline.name if start_list.discipline else "—"
-    from app import nastavitve as _nst
-    _s = _nst.get()
-    _logo = str(_nst.abs_path(_s["logo"])) if _nst.abs_path(_s["logo"]).exists() else None
-    _slika = str(_nst.abs_path(_s["slika"])) if _nst.abs_path(_s["slika"]).exists() else None
     pdf = start_list_pdf_bytes(
         start_list, start_list.pupils, discipline_name, start_list.grade,
-        ime_sole=_s.get("ime_sole", ""),
-        tekmovanje_title=_s.get("tekmovanje_title", "Tekmovanje v atletiki"),
-        logo_path=_logo, slika_path=_slika,
     )
     filename = f"startna_lista_{start_list_id}.pdf"
     return Response(
