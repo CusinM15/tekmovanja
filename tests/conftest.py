@@ -20,4 +20,10 @@ from app.main import app
 @pytest.fixture(scope="session")
 def client():
     with TestClient(app) as c:
+        # Štartne liste v testni bazi ustvarimo tako, kot jih ustvari uporabnik
+        # v app-u: z gumbom (POST /start-lists/generate). Zagon/seed jih namreč
+        # ne sme ustvariti sam — to počne SAMO uporabnik (regresijski test
+        # test_zagon_ne_ustvari_startnih_list... to preverja).
+        r = c.post("/start-lists/generate")
+        assert r.status_code == 200 and r.json().get("start_lists") == 16, r.text
         yield c

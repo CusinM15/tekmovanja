@@ -18,6 +18,9 @@ import subprocess
 
 import pytest
 import io
+import os
+import sys
+import tempfile
 
 CSV_HEADER = "First Name,Last Name,School,Grade,Gender,Discipline (ID)"
 CSV_PRIMER = "Ime,Priimek,Šola (npr. OŠ Žirovnica),Razred (2.r ali 3.r),Spol (M ali Ž),Disciplina (ID iz tabele zgoraj, npr. 1)"
@@ -832,3 +835,33 @@ def test_rekordi_predloga_discipline_le_enkrat():
     assert len(leg) == 2, leg                       # samo tek 60m + tek 400m, enkrat
     assert leg == ["1. tek 60m", "2. tek 400m"], leg
     assert all("♂" not in l and "♀" not in l and "M" not in l.split(".")[1] for l in leg)
+
+
+def test_zagon_ne_ustvari_startnih_list_dokler_uporabnik_ne_klikne():
+    """ZAGON APP-A: ob (ponovnem) zagonu se štartne liste NE smejo ustvariti
+    samodejno — tudi če so učenci že v bazi. Ustvari jih SAMO uporabnik z
+    gumbom »Ustvari štartne liste« (POST /start-lists/generate).
+    Teče na LOČENI začasni bazi (subprocess), da ne vpliva na ostale teste."""
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-zagon-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, json\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "with TestClient(app) as c:\n"
+        "    print('PRAZNO', len(c.get('/start-lists').json()))\n"
+        "    r = c.post('/start-lists/generate')\n"
+        "    j = r.json()\n"
+        "    print('GENERATE', r.status_code, j.get('status'), j.get('start_lists'))\n"
+        "    print('PO', len(c.get('/start-lists').json()))\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=120, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    assert "PRAZNO 0" in p.stdout, \
+        f"ob zagonu mora biti 0 štartnih list (ustvari jih SAMO uporabnik):\n{p.stdout}\n{p.stderr}"
+    assert "GENERATE 200 success 16" in p.stdout, \
+        f"gumb mora ustvariti 16 list:\n{p.stdout}\n{p.stderr}"
+    assert "PO 16" in p.stdout, p.stdout + p.stderr

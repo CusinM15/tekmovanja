@@ -291,11 +291,9 @@ def _seed_defaults():
                         u.disciplines = str(idx + 1)
             db.commit()
 
-        # POZOR: štartne liste v produkciji ustvari SAMO uporabnik z gumbom
-        # »Ustvari štartne liste« (stran Štartne liste) — uvoz in zagon jih ne
-        # ustvarjata samodejno. Seed (testi) jih ustvari spodaj.
-        if db.query(Pupil).count() and not db.query(StartList).count():
-            _ustvari_startne_liste(db)
+        # Štartne liste ustvari SAMO uporabnik z gumbom »Ustvari štartne liste«
+        # (stran Štartne liste) — zagon app-a in CSV uvoz jih NE ustvarjata
+        # samodejno. Testi jih ustvarijo prek /start-lists/generate (conftest).
         _backfill_record_snapshots(db)
         from app.services import _reassign_all_positions
         _reassign_all_positions(db)
