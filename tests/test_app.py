@@ -1001,9 +1001,11 @@ def test_results_pdf_met_zdruzi_poskuse_na_najboljsega():
         f.write(pdf_data)
     pt = subprocess.run(["pdftotext", pdf, "-"], capture_output=True, text=True)
     t = pt.stdout
-    # najboljši poskus (12.0 → "12,00 cm") je vključen, šibkejši (8.0) NI
-    assert "12,00 cm" in t, f"najboljši poskus met mora biti prikazan:\n{t}"
-    assert "8,00 cm" not in t, f"šibkejši poskus met NE sme biti prikazan:\n{t}"
+    # met vorteksa ima 3 STOLPCE za rezultat — prikazani so VSI trije poskusi
+    # (najboljši prvi, ob izenačenem drugi itd.). Luka: 12,00 / 9,00 / 8,00.
+    i12 = t.find("12,00 cm"); i9 = t.find("9,00 cm"); i8 = t.find("8,00 cm")
+    assert i12 >= 0 and i9 >= 0 and i8 >= 0, f"vsi trije poskusi met morajo biti prikazani:\n{t}"
+    assert i12 < i9 < i8, f"najboljši (12,00) mora biti prvi, nato 9,00, 8,00:\n{t}"
 
 
 def test_results_pdf_16_skupin_tudi_z_negenericnimi_imena_disciplin():
@@ -1054,8 +1056,94 @@ def test_results_pdf_16_skupin_tudi_z_negenericnimi_imena_disciplin():
                            capture_output=True, text=True)
         return q.stdout
     s3 = stran(3)
-    assert "2.r" in s3, "stran 3 = 2. razred (skupine se izpišejo)"
-    assert any(x in s3 for x in ("Maraton", "Skok v višino", "Štafeta", "Kros")), \
-        f"preimenovana disciplina je na strani 3, dobil: {s3[:200]}"
+    assert "2.r" in s3 and "OŠ" in s3, \
+        f"stran 3 = 2. razred s prikazanim učencem (skupina se izpiše z normaliziranim imenom): {s3[:200]}"
     # razvrstitev šol (stran 2) prav tako ne sme biti prazna
     assert "Šola" in stran(2) and "Točke" in stran(2), "razvrstitev šol v PDF-ju"
+
+
+def test_results_pdf_struktura_20_strani_vrstni_red():
+    """REZULTATI PDF = natanko 20 strani v vrstnem redu:
+    uvodna(1) + šole(2) + 2.r fantje(3-6) + 2.r dekleta(7-10) +
+    3.r fantje(11-14) + 3.r dekleta(15-18) + rekordi 2.r(19) + rekordi 3.r(20)."""
+    if shutil.which("pdfinfo") is None or shutil.which("pdftotext") is None:
+        pytest.skip("pdfinfo/pdftotext nista na voljo")
+    import base64
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-struktura-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, base64\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "with TestClient(app) as c:\n"
+        "    c.post('/start-lists/generate')\n"
+        "    r = c.get('/results-pdf')\n"
+        "    print('STATUS', r.status_code)\n"
+        "    print('PDF', base64.b64encode(r.content).decode())\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=180, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    assert "STATUS 200" in p.stdout, p.stdout + p.stderr
+    pdf_data = base64.b64decode([l for l in p.stdout.splitlines() if l.startswith("PDF ")][0][4:])
+    pdf = os.path.join(os.path.dirname(db_path), "r.pdf")
+    with open(pdf, "wb") as f:
+        f.write(pdf_data)
+    pi = subprocess.run(["pdfinfo", pdf], capture_output=True, text=True)
+    pages = [l for l in pi.stdout.splitlines() if l.strip().startswith("Pages")]
+    assert pages and pages[0].split()[-1] == "20", f"PDF mora imeti 20 strani: {pages}"
+    def stran(n):
+        q = subprocess.run(["pdftotext", "-f", str(n), "-l", str(n), pdf, "-"],
+                           capture_output=True, text=True)
+        return q.stdout.replace("\n", " ")
+    assert "fantje" in stran(3) and "2.r" in stran(3), f"str.3 = 2.r fantje: {stran(3)[:40]}"
+    assert "dekleta" in stran(7) and "2.r" in stran(7), f"str.7 = 2.r dekleta: {stran(7)[:40]}"
+    assert "fantje" in stran(11) and "3.r" in stran(11), f"str.11 = 3.r fantje: {stran(11)[:40]}"
+    assert "dekleta" in stran(15) and "3.r" in stran(15), f"str.15 = 3.r dekleta: {stran(15)[:40]}"
+    assert "SUPER STANKO" in stran(19) and "2. razred" in stran(19), "str.19 = rekordi 2.r"
+    assert "SUPER STANKO" in stran(20) and "3. razred" in stran(20), "str.20 = rekordi 3.r"
+
+
+def test_start_list_met_ima_3_stolpce_tek_1():
+    """ŠTARTNA LISTA: met vorteksa in skok v daljino (cm) imata 3 polja za vpis
+    rezultata (1./2./3.); teki (s) eno polje (Rezultat)."""
+    if shutil.which("pdftotext") is None:
+        pytest.skip("pdftotext ni na voljo")
+    import base64
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-sl-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, base64\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "with TestClient(app) as c:\n"
+        "    c.post('/start-lists/generate')\n"
+        "    ls = c.get('/start-lists').json()\n"
+        "    for sl in ls:\n"
+        "        pdf = c.get('/start-lists/' + str(sl['id']) + '/pdf').content\n"
+        "        print('SL', sl['discipline_id'], base64.b64encode(pdf).decode())\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=180, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    txt_disc = {}   # discipline_id -> pdftotext text
+    for ln in p.stdout.splitlines():
+        if ln.startswith("SL "):
+            _, did, b64 = ln.split(" ", 2)
+            import base64 as _b
+            pdf = _b.b64decode(b64)
+            tmp = os.path.join(os.path.dirname(db_path), f"sl_{did}.pdf")
+            with open(tmp, "wb") as f:
+                f.write(pdf)
+            txt_disc[int(did)] = subprocess.run(["pdftotext", tmp, "-"],
+                                                capture_output=True, text=True).stdout
+    # met vorteksa (disc 4) in skok (disc 3) → 3 polja
+    for did in (3, 4):
+        assert "1." in txt_disc[did] and "2." in txt_disc[did] and "3." in txt_disc[did], \
+            f"štartna lista discipline {did} mora imeti 3 polja"
+    # tek 60m (disc 1) → eno polje
+    assert "Rezultat" in txt_disc[1], "štartna lista teka ima eno polje (Rezultat)"

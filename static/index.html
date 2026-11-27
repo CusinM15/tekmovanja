@@ -1126,30 +1126,52 @@ function prikaziRezultateDiscipline(id, spolFil){
         izbrani.push(u);
       }
       var vrstice = '', st = 0;
+      // met vorteksa (enota m) in skok v daljino (cm): vsak učenec ima 3 poskuse
+      var multi = (enotaZaDisciplino(dsc.name) !== 's');
       // razvrsti: tisti z rezultatom po mestu (najboljši = mesto 1 na vrhu), brez rezultata zadaj
       var kandidati = [];
       for (var x = 0; x < izbrani.length; x++){
         var u = izbrani[x];
-        var e = null;
+        var evs = [];
         for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
           if (sportIds.indexOf(REZULTATI_DOGODKI[j].discipline_id) === -1) continue;
-          if (REZULTATI_DOGODKI[j].pupil_id === u.id){ e = REZULTATI_DOGODKI[j]; break; }
+          if (REZULTATI_DOGODKI[j].pupil_id === u.id) evs.push(REZULTATI_DOGODKI[j]);
         }
-        kandidati.push({ u: u, e: e, m: (e && e.position != null) ? e.position : 1e9 });
+        // najboljši prvi (za cm večji; za teke manjši)
+        evs.sort(function(a, b){ return multi ? (b.time - a.time) : (a.time - b.time); });
+        var e = evs.length ? evs[0] : null;
+        kandidati.push({ u: u, e: e, evs: evs, m: (e && e.position != null) ? e.position : 1e9 });
       }
       kandidati.sort(function(a, b){ return a.m - b.m; });
       for (var x = 0; x < kandidati.length; x++){
-        var u = kandidati[x].u, e = kandidati[x].e;
+        var u = kandidati[x].u, e = kandidati[x].e, evs = kandidati[x].evs;
         st++;
         var urejanjeU = '<span class="povezava" onclick="odpriModalUcenec(' + u.id + ')">👤 Uredi učenca</span>&nbsp;';
-        var akcija = urejanjeU + (e
-          ? '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi rezultat</span>&nbsp;' +
-            '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši rezultat</span>'
-          : '<span class="povezava" onclick="odpriModalRezultat(null,' + id + ',' + u.id + ')">＋ Dodaj rezultat</span>');
+        var akcija = urejanjeU;
+        if (multi){
+          // met/skok: 3 vnosna polja v modalu (odpri z učencem+disciplino)
+          akcija += '<span class="povezava" onclick="odpriModalRezultat(null,' + id + ',' + u.id + ')">✏️ Vnesi rezultate</span>';
+          if (evs.length) akcija += '&nbsp;<span class="povezava rdeca" onclick="izbrisiRezultateUcenca(' + u.id + ',' + id + ')">🗑️ Izbriši</span>';
+        } else {
+          akcija += (e
+            ? '<span class="povezava" onclick="odpriModalRezultat(' + e.id + ')">✏️ Uredi rezultat</span>&nbsp;' +
+              '<span class="povezava rdeca" onclick="izbrisiRezultat(' + e.id + ')">🗑️ Izbriši rezultat</span>'
+            : '<span class="povezava" onclick="odpriModalRezultat(null,' + id + ',' + u.id + ')">＋ Dodaj rezultat</span>');
+        }
+        var tdRez = multi
+          ? (function(){
+              var s = '';
+              for (var k = 0; k < 3; k++){
+                var tv = (k < evs.length) ? evs[k].time : null;
+                s += (k ? '</td><td>' : '') + '<strong>' + (tv != null ? casLepo(tv, dsc.name) : '—') + '</strong>';
+              }
+              return '<td>' + s + '</td>';
+            })()
+          : '<td><strong>' + (e ? casLepo(e.time, dsc.name) : '—') + '</strong></td>';
         vrstice += '<tr>' +
           '<td>' + esc(u.first_name + ' ' + u.last_name) + '</td>' +
           '<td>' + esc(u.school_name || '') + '</td>' +
-          '<td><strong>' + (e ? casLepo(e.time, dsc.name) : '—') + '</strong></td>' +
+          tdRez +
           '<td>' + (e && e.position != null ? e.position + '.' : '—') + '</td>' +
           '<td><strong>' + (e && e.position != null ? tockeZaMesto(e.position) : '—') + '</strong></td>' +
           '<td>' + (e ? esc(e.notes || '') : '—') + '</td>' +
@@ -1159,8 +1181,10 @@ function prikaziRezultateDiscipline(id, spolFil){
       html += '<h3 style="margin:18px 0 4px">' + esc(naslov) + ' ' + spolIkona +
               ' <small style="font-weight:400;color:#7f8c8d">(' + st + (st === 1 ? ' učenec' : ' učencev') + ')</small></h3>';
       if (st){
-        html += '<table class="sortable"><thead><tr><th>Učenec</th><th>Šola</th><th>Čas / dolžina</th><th>Mesto</th><th>Točke</th><th>Opombe</th><th></th></tr></thead><tbody>' +
-                vrstice + '</tbody></table>';
+        var thead = multi
+          ? '<th>Učenec</th><th>Šola</th><th>1.</th><th>2.</th><th>3.</th><th>Mesto</th><th>Točke</th><th>Opombe</th><th></th>'
+          : '<th>Učenec</th><th>Šola</th><th>Čas / dolžina</th><th>Mesto</th><th>Točke</th><th>Opombe</th><th></th>';
+        html += '<table class="sortable"><thead><tr>' + thead + '</tr></thead><tbody>' + vrstice + '</tbody></table>';
       } else {
         html += '<div class="prazno">V tej skupini ni učencev.</div>';
       }
@@ -1192,11 +1216,11 @@ function preklopiRezultatDisciplino(v){
 function odpriModalRezultat(id, predDisciplina, predUcenec){
   var jeUrejanje = !!id;
   var dogodek = null;
-  var priprava = Promise.all([natovoriUcence(), natovoriDiscipline()]).then(function(){
-    if (id){
-      return api('/events').then(function(d){ for (var i = 0; i < d.length; i++) if (d[i].id === id) dogodek = d[i]; });
-    }
-  });
+  var priprava = Promise.all([natovoriUcence(), natovoriDiscipline()])
+    .then(function(){ return api('/events').then(function(d){ REZULTATI_DOGODKI = d || []; }); })
+    .then(function(){
+      if (id){ for (var i = 0; i < REZULTATI_DOGODKI.length; i++) if (REZULTATI_DOGODKI[i].id === id) dogodek = REZULTATI_DOGODKI[i]; }
+    });
   priprava.then(function(){
     var izbranU = dogodek ? dogodek.pupil_id : (predUcenec || null);
     var izbranD = dogodek ? dogodek.discipline_id : (predDisciplina || null);
@@ -1204,11 +1228,27 @@ function odpriModalRezultat(id, predDisciplina, predUcenec){
     var opcijeD = VSE_DISCIPLINE.map(function(d){ return '<option value="' + d.id + '"' + (d.id === izbranD ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('');
     var izbDiscIme = '';
     for (var di = 0; di < VSE_DISCIPLINE.length; di++) if (VSE_DISCIPLINE[di].id === izbranD) izbDiscIme = VSE_DISCIPLINE[di].name;
+    var multi = (enotaZaDisciplino(izbDiscIme) !== 's');
+    // obstoječi poskusi (u, disciplina), najboljši prvi
+    var obstoj = [];
+    for (var j = 0; j < REZULTATI_DOGODKI.length; j++){
+      var evx = REZULTATI_DOGODKI[j];
+      if (evx.pupil_id === izbranU && evx.discipline_id === izbranD) obstoj.push(evx);
+    }
+    obstoj.sort(function(a, b){ return multi ? (b.time - a.time) : (a.time - b.time); });
+    var casPolja;
+    if (multi){
+      casPolja = '<div class="polje"><label>1. poskus</label><input id="f-r-cas" value="' + esc(obstoj[0] ? String(obstoj[0].time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+                 '<div class="polje"><label>2. poskus</label><input id="f-r-cas2" value="' + esc(obstoj[1] ? String(obstoj[1].time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+                 '<div class="polje"><label>3. poskus</label><input id="f-r-cas3" value="' + esc(obstoj[2] ? String(obstoj[2].time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>';
+    } else {
+      casPolja = '<div class="polje"><label id="f-r-cas-label">Čas (v ' + (enotaLabel(izbDiscIme) || 'sekundah') + ', npr. 12,5)</label><input id="f-r-cas" value="' + esc(dogodek ? String(dogodek.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>';
+    }
     $('modal-vsebina').innerHTML =
-      '<h3>' + (jeUrejanje ? '✏️ Uredi rezultat' : '＋ Dodaj rezultat') + '</h3>' +
+      '<h3>' + (jeUrejanje ? '✏️ Uredi rezultat' : '＋ ' + (multi ? 'Vnesi rezultate' : 'Dodaj rezultat')) + '</h3>' +
       '<div class="polje"><label>Učenec</label><select id="f-r-ucenec">' + opcijeU + '</select></div>' +
       '<div class="polje"><label>Disciplina</label><select id="f-r-disciplina" onchange="posodobiEnotoRez(this)">' + opcijeD + '</select></div>' +
-      '<div class="polje"><label id="f-r-cas-label">Čas (v ' + (enotaLabel(izbDiscIme) || 'sekundah') + ', npr. 12,5)</label><input id="f-r-cas" value="' + esc(dogodek ? String(dogodek.time).replace('.', ',') : '') + '" placeholder="npr. 12,5"></div>' +
+      casPolja +
       '<div class="polje"><label>Opombe (neobvezno)</label><textarea id="f-r-opombe" rows="2">' + esc(dogodek ? dogodek.notes || '' : '') + '</textarea></div>' +
       '<div class="modal-gumbi">' +
         '<button class="gumb gumb-siv" onclick="zapriModal()">Prekliči</button>' +
@@ -1219,11 +1259,35 @@ function odpriModalRezultat(id, predDisciplina, predUcenec){
 }
 
 function shraniRezultat(id){
+  var pid = parseInt($('f-r-ucenec').value, 10);
+  var did = parseInt($('f-r-disciplina').value, 10);
+  var imeD = '';
+  for (var i = 0; i < VSE_DISCIPLINE.length; i++) if (VSE_DISCIPLINE[i].id === did) imeD = VSE_DISCIPLINE[i].name;
+  var multi = (enotaZaDisciplino(imeD) !== 's');
+  if (multi){
+    // met/skok: 3 poskusi — prej izbrišemo obstoječe, nato vpišemo vsak vnesen
+    var obstoj = REZULTATI_DOGODKI.filter(function(e){ return e.pupil_id === pid && e.discipline_id === did; });
+    var izbrani = [$('f-r-cas').value, $('f-r-cas2').value, $('f-r-cas3').value];
+    var vnosi = [];
+    for (var k = 0; k < izbrani.length; k++){
+      var v = parseFloat((izbrani[k] || '').replace(',', '.'));
+      if (!isNaN(v) && v >= 0) vnosi.push(v);
+    }
+    var veriga = Promise.resolve();
+    obstoj.forEach(function(ev){ veriga = veriga.then(function(){ return api('/events/' + ev.id, 'DELETE'); }); });
+    vnosi.forEach(function(tv){ veriga = veriga.then(function(){ return api('/events', 'POST', { pupil_id: pid, discipline_id: did, time: tv, notes: null }); }); });
+    veriga.then(function(){
+      toast('Rezultati shranjeni.', 'ok');
+      zapriModal(); natovoriRezultate(); natovoriPregled(); natovoriRekorde();
+    }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+    return;
+  }
+  // enojni rezultat (teki)
   var cas = parseFloat(($('f-r-cas').value || '').replace(',', '.'));
   if (isNaN(cas) || cas < 0){ toast('Vnesite veljaven čas.', 'napaka'); return; }
   var pod = {
-    pupil_id: parseInt($('f-r-ucenec').value, 10),
-    discipline_id: parseInt($('f-r-disciplina').value, 10),
+    pupil_id: pid,
+    discipline_id: did,
     time: cas,
     notes: $('f-r-opombe').value.trim() || null
   };
@@ -1233,6 +1297,17 @@ function shraniRezultat(id){
   zahteva.then(function(){
     toast(id ? 'Rezultat posodobljen.' : 'Rezultat dodan.', 'ok');
     zapriModal(); natovoriRezultate(); natovoriPregled(); natovoriRekorde();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiRezultateUcenca(pupilId, disciplineId){
+  if (!confirm('Ali res želite izbrisati VSE rezultate (poskuse) tega učenca v tej disciplini?')) return;
+  var obstoj = REZULTATI_DOGODKI.filter(function(e){ return e.pupil_id === pupilId && e.discipline_id === disciplineId; });
+  var veriga = Promise.resolve();
+  obstoj.forEach(function(ev){ veriga = veriga.then(function(){ return api('/events/' + ev.id, 'DELETE'); }); });
+  veriga.then(function(){
+    toast('Rezultati izbrisani.', 'ok');
+    natovoriRezultate(); natovoriPregled(); natovoriRekorde();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
 

@@ -82,9 +82,14 @@ def points_for_position(position):
 
 
 def _reassign_positions_for(db, discipline_id, grade, spol=None):
-    """Mesto se določi SAMODEJNO glede na čas znotraj (disciplina, spol, razred):
-    hitrejši čas = boljše mesto; izenačen čas = isti mesto (competition ranking)."""
-    from app.models import CompetitionEvent, Pupil
+    """Mesto se določi SAMODEJNO znotraj (disciplina, spol, razred).
+
+    Vsak učenec šteje NATANČNO 1× — uporabimo njegove poskuse UREJENE od
+    najboljšega (za met/skok tudi drugi/tretji kot tie-break): najprej najboljši,
+    ob izenačenem drugi, nato tretji. Izenačena serija = isto mesto.
+    """
+    from app.models import CompetitionEvent, Pupil, Discipline
+    from app.models import disciplina_smer
     if not grade or grade not in ("2.r", "3.r"):
         return
     q = db.query(CompetitionEvent).join(CompetitionEvent.pupil).filter(
@@ -93,19 +98,35 @@ def _reassign_positions_for(db, discipline_id, grade, spol=None):
     )
     if spol:
         q = q.filter(Pupil.gender == spol)
-    # smer "boljši": tek -> manjši rezultat prvi; skok/met -> večji prvi
-    from app.models import disciplina_smer, Discipline, CompetitionEvent as _CE
     _disc = db.query(Discipline).get(discipline_id)
     _smer = disciplina_smer(_disc.name if _disc else "")
-    _ord = CompetitionEvent.time.desc() if _smer == "higher" else CompetitionEvent.time.asc()
-    evts = q.order_by(_ord, CompetitionEvent.id.asc()).all()
-    prev = None
+    evts = q.all()
+    # poskuse združimo po učencu
+    byp = {}
+    for ev in evts:
+        if not ev.pupil:
+            continue
+        byp.setdefault(ev.pupil_id, []).append(ev)
+
+    def _key(pair):
+        series, pid = pair
+        # (0 → ima rezultat; potem serija od najboljšega dalje)
+        if _smer == "higher":
+            return (0,) + tuple(-e.time for e in series)
+        return (0,) + tuple(e.time for e in series)
+
+    order = [(sorted(evs, key=lambda e: e.time, reverse=(_smer == "higher")), pid)
+             for pid, evs in byp.items()]
+    order.sort(key=_key)
     mesto = 0
-    for idx, ev in enumerate(evts, start=1):
-        if prev is None or abs(ev.time - prev) > 1e-9:
+    prevkey = None
+    for idx, (series, _pid) in enumerate(order, start=1):
+        curkey = _key((series, _pid))
+        if prevkey is None or curkey != prevkey:
             mesto = idx
-        ev.position = mesto
-        prev = ev.time
+        prevkey = curkey
+        for ev in series:
+            ev.position = mesto
 
 
 def _reassign_all_positions(db):

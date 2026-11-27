@@ -502,9 +502,14 @@ def school_points(db=Depends(get_db)):
     """Seštevek točk po šolah iz VSEH rezultatov (1. mesto=15, 2.=12, ..., 12.=1)."""
     from app.services import points_for_position
     pts = {}
+    seen = set()   # (pupil, discipline) — vsak učenec največ 1× (najboljši poskus)
     for ev in db.query(CompetitionEvent).all():
         if not ev.pupil or not ev.pupil.school:
             continue
+        key = (ev.pupil_id, ev.discipline_id)
+        if key in seen:
+            continue
+        seen.add(key)
         sid = ev.pupil.school.id
         row = pts.setdefault(sid, {"school_id": sid, "school_name": ev.pupil.school.name, "points": 0})
         row["points"] += points_for_position(ev.position)

@@ -532,18 +532,41 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     pupils = pupils or []
     records = records or []
 
-    # Skupine (ena stran na skupino) gradimo IZ DEJANSKIH PODATKOV V BAZI —
-    # ne iz 4 "privzetih" disciplin. Uporabnik ima lahko poljuben nabor disciplin
-    # (npr. vseh 16: šport × razred × spol); vsaka (disciplina, razred, spol)
-    # kombinacija z vsaj enim učencem/rezultatom postane ena stran. Vse se
-    # vedno na sveže prebere iz aplikacije (Pupil.disciplines + štartne liste +
-    # CompetitionEvent), zato PDF odraža trenutno bazo, ne 4 trdo kodiranih športov.
+    # ── SKUPINE: točno 16 (4 športi × 2.r fantje/punce + 3.r fantje/punce) ──
+    # Discipline v bazi poimenujemo na KANONIČNI šport (odstranimo razred/spol iz
+    # imena), da se ista disciplina ne podvoji na več strani. Skupina =
+    # (kanonični šport, razred, spol); vrstni red: najprej 2.r fantje (vsi športi),
+    # 2.r punce, 3.r fantje, 3.r punce. Tako je PDF vedno 20 strani (uvodna + šole
+    # + 16 skupin + rekordi 2.r + rekordi 3.r).
     import re as _re2
     from app.database import DBSession as _db
     from app.models import Discipline as _Disc, StartList as _SL
-    _disci = _db.query(_Disc).all()
+    from app.settings import app_config as _cfg
 
-    # Prijavljeni učenci: članstvo v štartnih listah ...
+    def _norm_sport(ime):
+        n = (ime or "").lower().replace("♀", "").replace("♂", "")
+        n = _re2.sub(r"[.,;:()\"'\-]+", " ", n)
+        n = _re2.sub(r"\b(2|3)\s*\.?\s*r\b", " ", n)              # 2.r, 3.r, 2r, 3r
+        n = _re2.sub(r"\b(drugi|tretji|razred|fantj\w*|punc\w*|dekl\w*|dečk\w*|fantič\w*)\b", " ", n)
+        n = _re2.sub(r"\b(m|ž|z)\b", " ", n)                      # samostojni spol
+        n = _re2.sub(r"\s+", " ", n).strip()
+        return n
+
+    _disci = _db.query(_Disc).all()
+    # kanonični šport = normalizirano ime; disciplina je izvorno za prikaz
+    sport_disc = {}      # kanon_norm_ime -> {discipline_id}
+    first_name = {}      # kanon_norm_ime -> lepo ime za naslov
+    for _d in _disci:
+        if _d.id is None:
+            continue
+        sn = _norm_sport(_d.name or "")
+        if not sn:
+            continue
+        sport_disc.setdefault(sn, set()).add(_d.id)
+        first_name.setdefault(sn, (_d.name or "").replace("♀", "").replace("♂", "").strip())
+    _sporti = sorted(sport_disc.keys())   # po abecedi; stabilen vrstni red
+
+    # Prijavljeni učenci v štartnih listah in iz Pupil.disciplines (ID-ji).
     _start_listi = _db.query(_SL).all()
     prijav = {}   # discipline_id -> {pupil_id: pupil}
     for sl in _start_listi:
@@ -552,8 +575,6 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         m = prijav.setdefault(sl.discipline_id, {})
         for p in sl.pupils:
             m[p.id] = p
-
-    # ... in iz Pupil.disciplines (ID-ji disciplin, na katere je učenec razporejen).
     disc_of_pupil = {}   # pupil_id -> set(str-did)
     for p in pupils:
         vp = _re2.split(r"[,;\s]+", (p.disciplines or "").strip())
@@ -567,42 +588,43 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         if ev.discipline_id is not None:
             ev_by_disc.setdefault(ev.discipline_id, []).append(ev)
 
-    def _raz_key(r):
-        return 0 if str(r or "").startswith("2") else 1
+    _raz_key = {"2.r": 0, "3.r": 1}
+    _spol_key = {"M": 0, "Ž": 1}
 
-    skupine = []   # [(discipline_id, razred, spol), ...]
-    for _d in _disci:
-        did = _d.id
+    # Za vsak kanonični šport ugotovimo, katere (razred, spol) kombinacije obstajajo.
+    skupine = []   # [(kanon_ime, razred, spol), ...]
+    for sn in _sporti:
+        dids = sport_disc[sn]
         komb = set()
-        for ev in ev_by_disc.get(did, []):
-            if ev.pupil and ev.pupil.grade:
-                komb.add((ev.pupil.grade, (ev.pupil.gender or "")))
-        for p in prijav.get(did, {}).values():
-            if p.grade:
-                komb.add((p.grade, (p.gender or "")))
+        for did in dids:
+            for ev in ev_by_disc.get(did, []):
+                if ev.pupil and ev.pupil.grade and ev.pupil.gender:
+                    komb.add((ev.pupil.grade, ev.pupil.gender))
+            for p in prijav.get(did, {}).values():
+                if p.grade and p.gender:
+                    komb.add((p.grade, p.gender))
         for pid, ids in disc_of_pupil.items():
-            if str(did) not in ids:
+            if not (ids & {str(d) for d in dids}):
                 continue
             p = next((x for x in pupils if getattr(x, "id", None) == pid), None)
-            if p and p.grade:
-                komb.add((p.grade, (p.gender or "")))
+            if p and p.grade and p.gender:
+                komb.add((p.grade, p.gender))
         for raz, spol in komb:
-            skupine.append((did, raz, spol))
-
-    def _ime_d(did):
-        return next((d.name for d in _disci if getattr(d, "id", None) == did), "")
-
-    # Vrstni red: najprej VES 2. razred (vse skupine), nato 3. razred; znotraj
-    # po spolu in imenu discipline. (uporabnik: "najprej vseh 8 za 2.r, nato 8 za 3.r").
-    skupine.sort(key=lambda g: (_raz_key(g[1]), g[2], (_ime_d(g[0]) or "").lower(), g[0]))
-    _skupine_ids = {g[0] for g in skupine}
-    # evente omejimo na discipline, ki imajo vsaj eno skupino; ostali ne dodajo strani
+            skupine.append((sn, raz, spol))
+    # vrstni red: razred, spol, šport
+    skupine.sort(key=lambda g: (_raz_key.get(g[1], 9), _spol_key.get(g[2], 9),
+                                _norm_sport(g[0]), g[0]))
+    _skupine_ids = set()
+    for _s in _sporti:
+        _skupine_ids |= set(sport_disc[_s])
+    # evente omejimo na discipline, ki spadajo pod kakšen šport
     events = [ev for ev in events
               if ev.discipline and ev.discipline_id in _skupine_ids]
 
-    def _disc_ime(ev, did, prefix="Disciplina ID"):
-        # disciplina morda nima nobenega eventa (prazna skupina po "Počisti")
-        # -> ev je None; ime vzamemo iz Discipline tabele (_disci že v slogu).
+    def _disc_ime(ev, did, prefix="Disciplina ID", kanon_ime=None):
+        # ime za naslov skupine = kanonični šport (brez spola/razreda)
+        if kanon_ime:
+            return kanon_ime
         if ev is not None and ev.discipline:
             ime = ev.discipline.name
         else:
@@ -610,15 +632,17 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
                        f"{prefix} {did}")
         return (ime or "").replace("♀", "").replace("♂", "").strip()
 
-    # Prijavljeni učenci po skupini (disciplina × razred × spol) — iz štartnih
+    # Prijavljeni učenci po skupini (kanonični šport × razred × spol) — iz štartnih
     # list; prikažejo se na PDF TUDI če še nimajo rezultata.
-    prijavljeni = {}   # (did, raz, spol) -> {pupil_id: pupil}
-    for (_did, _raz, _spol) in skupine:
-        prijavljeni[(_did, _raz, _spol)] = {
-            pid: p for pid, p in prijav.get(_did, {}).items()
-            if (getattr(p, "grade", None) or "") == _raz
-            and (getattr(p, "gender", None) or "") == _spol
-        }
+    prijavljeni = {}   # (kanon, raz, spol) -> {pupil_id: pupil}
+    for (kn, _raz, _spol) in skupine:
+        m = {}
+        for did in sport_disc[kn]:
+            for pid, p in prijav.get(did, {}).items():
+                if (getattr(p, "grade", None) or "") == _raz \
+                        and (getattr(p, "gender", None) or "") == _spol:
+                    m[pid] = p
+        prijavljeni[(kn, _raz, _spol)] = m
 
     elems = []
 
@@ -665,9 +689,14 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     # ── 2. REZULTATI PO ŠOLAH (po točkah) ───────────────────────────
     from app.services import points_for_position
     pts = {}
+    seen = set()   # (pupil, discipline) — vsak učenec 1× (najboljši poskus), ne vsi 3
     for ev in events:
         if not ev.pupil or not ev.pupil.school:
             continue
+        key = (ev.pupil_id, ev.discipline_id)
+        if key in seen:
+            continue
+        seen.add(key)
         sid = ev.pupil.school.id
         row = pts.setdefault(sid, {"school_name": ev.pupil.school.name, "points": 0})
         row["points"] += points_for_position(ev.position if ev.position else 0)
@@ -686,35 +715,35 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     elems.append(PageBreak())
 
     # ── 3–18. REZULTATI PO SKUPINAH (16 skupin, ena stran na skupino) ──
-    for did, raz, spol in skupine:
-        ime = _disc_ime(next((ev for ev in events if ev.discipline and ev.discipline_id == did), None), did)
+    for kanon, raz, spol in skupine:
+        ime = kanon or "—"
         from app.models import disciplina_smer as _dsmer
         smer = _dsmer(ime)
-        # Rezultati po učencu (met/skok ima lahko VEČ poskusov = več eventov).
-        # Za vsakega učenca vzamemo SAMO NAJBOLJŠI poskus (dolžina/čas po smeri),
-        # da se učenec ne ponavlja in tabela pokaže pravi (najboljši) rezultat.
-        def _best(evs):
-            return max(evs, key=lambda e: e.time) if smer == "higher" else min(evs, key=lambda e: e.time)
+        dids = sport_disc[kanon]
+        multi = (smer == "higher")   # met vorteksa in skok v daljino: 3 poskusi
+        # združimo poskuse po učencu (met/skok ima lahko več eventov = poskusov)
         rez = {}
         for ev in events:
-            if ev.discipline_id == did and ev.pupil \
+            if ev.discipline_id in dids and ev.pupil \
                     and ev.pupil.grade == raz and ev.pupil.gender == spol:
                 rez.setdefault(ev.pupil_id, []).append(ev)
-        _prijav = prijavljeni.get((did, raz, spol), {})
-        # Prijavljeni učenci (registrirani) te skupine, tudi tisti brez rezultata.
+        _prijav = prijavljeni.get((kanon, raz, spol), {})
         ucenci = []
         for pid, evs in rez.items():
-            best = _best(evs)
-            ucenci.append((pid, best.pupil, best))
+            # UREJEN seznam poskusov [najboljši, drugi, tretji] (po smeri)
+            series = sorted(evs, key=lambda e: e.time, reverse=(smer == "higher"))
+            ucenci.append((pid, series[0].pupil, series))
         for pid, p in _prijav.items():
             if pid not in rez:
                 ucenci.append((pid, p, None))
-        # sortiraj: tisti z rezultatom po mestu (najboljši 1. na vrhu), brez rezultata zadaj
+        # sortiraj: primerjava poskusov — najprej NAJBOLJŠI, ob izenačenem drugi,
+        # nato tretji (upošteva se najboljši rezultat; če izenačen, drugi itd.)
         def _sort(k):
-            pid, p, ev = k
-            if ev is None or ev.time is None:
+            pid, p, series = k
+            if not series:
                 return (1, 0)
-            return (0, ev.time if smer == "lower" else -ev.time)
+            return (0,) + (tuple(-e.time for e in series) if smer == "higher"
+                           else tuple(e.time for e in series))
         ucenci.sort(key=_sort)
         elems.append(Paragraph(f"{ime} — {spol_ime(spol)}, {raz}", styles["Heading2"]))
         if not ucenci:
@@ -723,31 +752,43 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
             elems.append(PageBreak())
             continue
         elems.append(Spacer(1, 0.2 * cm))
-        data = [[_cell_par("Mesto", font, size=9),
-                 _cell_par("Učenec", font, size=9),
-                 _cell_par("Šola", font, size=9),
-                 _cell_par("Čas / dolžina", font, size=9),
-                 _cell_par("Opombe", font, size=9)]]
-        for i, (pid, p, ev) in enumerate(ucenci, 1):
-            if ev is not None and ev.time is not None:
+        def _fmt(t):
+            return f"{t:.2f}".replace(".", ",") + " " + enota_za_disciplino(ime)
+        if multi:
+            data = [[_cell_par("Mesto", font, size=9),
+                     _cell_par("Učenec", font, size=9),
+                     _cell_par("Šola", font, size=9),
+                     _cell_par("1.", font, size=9),
+                     _cell_par("2.", font, size=9),
+                     _cell_par("3.", font, size=9),
+                     _cell_par("Opombe", font, size=9)]]
+            widths = [1.3 * cm, 3.5 * cm, 4.0 * cm, 2.1 * cm, 2.1 * cm, 2.1 * cm, 2.4 * cm]
+        else:
+            data = [[_cell_par("Mesto", font, size=9),
+                     _cell_par("Učenec", font, size=9),
+                     _cell_par("Šola", font, size=9),
+                     _cell_par("Čas", font, size=9),
+                     _cell_par("Opombe", font, size=9)]]
+            widths = [1.6 * cm, 4.6 * cm, 4.6 * cm, 3.0 * cm, 2.4 * cm]
+        for i, (pid, p, series) in enumerate(ucenci, 1):
+            if series:
                 prikaz_mesta = str(i) + "."
-                # vejica, kot v vzoru Rezultati 2025.docx (28,5 m / 10,87)
-                cas_val = f"{ev.time:.2f}".replace(".", ",") + " " + enota_za_disciplino(ime)
-                opombe = (ev.notes or "") or ""
+                opombe = (series[0].notes or "") or ""
             else:
-                # prijavljen, a brez zabeleženega rezultata — na polju za rezultat
-                # je "-", učenec pa je na koncu seznama (sort zgoraj)
                 prikaz_mesta = "—"
-                cas_val = "-"
-                opombe = (ev.notes or "") if ev is not None else ""
-            data.append([
-                _cell_par(prikaz_mesta, font, size=9),
-                _cell_par(f"{p.first_name} {p.last_name}" if p else "—", font, size=9),
-                _cell_par((p.school.name if p and p.school else "") or "—", font, size=9),
-                _cell_par(cas_val, font, size=9),
-                _cell_par(opombe, font, size=9),
-            ])
-        elems.append(_tab(data, [1.6 * cm, 4.6 * cm, 4.6 * cm, 2.8 * cm, 2.4 * cm]))
+                opombe = ""
+            row = [_cell_par(prikaz_mesta, font, size=9),
+                   _cell_par(f"{p.first_name} {p.last_name}" if p else "—", font, size=9),
+                   _cell_par((p.school.name if p and p.school else "") or "—", font, size=9)]
+            if multi:
+                for k in range(3):
+                    tv = series[k].time if (series and k < len(series)) else None
+                    row.append(_cell_par(_fmt(tv) if tv is not None else "-", font, size=9))
+            else:
+                row.append(_cell_par(_fmt(series[0].time) if series else "-", font, size=9))
+            row.append(_cell_par(opombe, font, size=9))
+            data.append(row)
+        elems.append(_tab(data, widths))
         elems.append(PageBreak())
 
     # ── REKORDI (2.r, nato 3.r) — po vzoru Rezultati 2025.docx ──────────
@@ -768,7 +809,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     def _slika_za_disciplino(ime):
         n = (ime or "").replace("♀", "").replace("♂", "").strip().lower()
         return {"met vorteksa": rekordi_vortex,
-                "skok v daljino": rekordi_deklica,   # skok nima lastne slike → deklica (zamenljivo)
+                "skok v daljino": rekordi_decek,   # skok nima lastne slike → druga (deček), zamenljivo v Nastavitvah
                 "tek 60m": rekordi_stadion,
                 "tek 400m": rekordi_teki}.get(n)
 
@@ -889,23 +930,37 @@ def start_list_pdf_bytes(start_list, pupils, discipline_name, grade):
     elems.append(Paragraph(f"{discipline_name} — {grade} razred", styles["Title"]))
     elems.append(Spacer(1, 0.3 * cm))
 
-    data = [[_cell_par("Učenec", font, size=10),
-             _cell_par("Šola", font, size=10),
-             _cell_par("Rezultat", font, size=10)]]
-    for pupil in pupils:
-        data.append([
-            _cell_par(f"{pupil.first_name} {pupil.last_name}", font, size=10),
-            # Šola razširjena + Paragraph: "OŠ Josipa Vandota Kranjska Gora" se
-            # zlomi znotraj celice in ne prelije čez rob.
-            _cell_par(pupil.school.name if pupil.school else "", font, size=10),
-            _cell_par("", font, size=10),  # prostor za vpis rezultata
-        ])
-    if len(data) == 1:
-        data.append([_cell_par("Ni učencev na listi.", font, size=10),
-                     _cell_par("", font, size=10),
-                     _cell_par("", font, size=10)])
+    # met vorteksa in skok v daljino: 3 polja za vpis rezultata (3 poskusi)
+    multi = (enota_za_disciplino(discipline_name) == "cm")
 
-    t = Table(data, repeatRows=1, colWidths=[7.0 * cm, 7.0 * cm, 3.0 * cm])
+    if multi:
+        header = [_cell_par("Učenec", font, size=10),
+                  _cell_par("Šola", font, size=10),
+                  _cell_par("1.", font, size=10),
+                  _cell_par("2.", font, size=10),
+                  _cell_par("3.", font, size=10)]
+        n_cols = 5
+    else:
+        header = [_cell_par("Učenec", font, size=10),
+                  _cell_par("Šola", font, size=10),
+                  _cell_par("Rezultat", font, size=10)]
+        n_cols = 3
+    data = [header]
+    for pupil in pupils:
+        row = [_cell_par(f"{pupil.first_name} {pupil.last_name}", font, size=10),
+               # Šola razširjena + Paragraph: "OŠ Josipa Vandota Kranjska Gora" se
+               # zlomi znotraj celice in ne prelije čez rob.
+               _cell_par(pupil.school.name if pupil.school else "", font, size=10)]
+        row += [_cell_par("", font, size=10) for _ in range(n_cols - 2)]  # prazen prostor za vpis
+        data.append(row)
+    if len(data) == 1:
+        row = [_cell_par("Ni učencev na listi.", font, size=10),
+               _cell_par("", font, size=10)]
+        row += [_cell_par("", font, size=10) for _ in range(n_cols - 2)]
+        data.append(row)
+
+    widths = ([6.0 * cm, 7.0 * cm] + [1.7 * cm] * (n_cols - 2)) if multi else [7.0 * cm, 7.0 * cm, 3.0 * cm]
+    t = Table(data, repeatRows=1, colWidths=widths)
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, 0), font),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
