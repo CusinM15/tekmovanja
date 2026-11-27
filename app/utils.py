@@ -749,11 +749,17 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         return r.school_name or (r.pupil.school.name if r.pupil and r.pupil.school else "—")
 
     for raz in ("2.r", "3.r"):
-        # logotip zgoraj (sredinsko)
+        # pas zgoraj: deček | logotip | deklica (kot v Rezultati 2025.docx)
         rl = _im(rekordi_logo, 2.8 * cm, 2.4 * cm)
-        if rl is not None:
-            t_rl = Table([[rl]], colWidths=[2.8 * cm], hAlign="CENTER")
-            t_rl.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+        rd = _im(rekordi_decek, 1.6 * cm, 1.8 * cm)
+        rk = _im(rekordi_deklica, 1.6 * cm, 1.8 * cm)
+        if rl is not None or rd is not None or rk is not None:
+            t_rl = Table([[rd if rd is not None else "",
+                           rl if rl is not None else "",
+                           rk if rk is not None else ""]],
+                         colWidths=[2.6 * cm, 2.8 * cm, 2.6 * cm], hAlign="CENTER")
+            t_rl.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                      ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
             elems.append(t_rl)
             elems.append(Spacer(1, 0.25 * cm))
         # naslov + podnaslov (kot v Rezultati 2025.docx)
