@@ -2138,6 +2138,19 @@ def delete_start_list(start_list_id: int, db=Depends(get_db)):
     return StartListService.delete(db, start_list_id)
 
 
+@app.delete("/start-lists", response_model=dict, summary="Delete all start lists")
+def delete_all_start_lists(db=Depends(get_db)):
+    """Izbriše VSE štartne liste (in članstva v start_list_pupils) — uporabnik
+    z gumbom »Izbriši štartne liste« na strani Štartne liste. Discipline,
+    učenci in rezultati ostanejo nedotaknjeni."""
+    from sqlalchemy import text
+    n = db.query(StartList).count()
+    db.execute(text("DELETE FROM start_list_pupils"))
+    db.query(StartList).delete()
+    db.commit()
+    return {"message": f"Vseh {n} štartnih list izbrisanih.", "deleted": n}
+
+
 @app.get("/best-results", response_model=List[dict], summary="Best results per discipline+grade")
 def best_results(db=Depends(get_db)):
     """Najboljši rezultati, združeni po disciplini IN razredu.

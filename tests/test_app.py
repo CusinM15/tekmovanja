@@ -865,3 +865,36 @@ def test_zagon_ne_ustvari_startnih_list_dokler_uporabnik_ne_klikne():
     assert "GENERATE 200 success 16" in p.stdout, \
         f"gumb mora ustvariti 16 list:\n{p.stdout}\n{p.stderr}"
     assert "PO 16" in p.stdout, p.stdout + p.stderr
+
+
+def test_izbrisi_vse_startne_liste():
+    """GUMB »Izbriši štartne liste« (DELETE /start-lists): izbriše VSE štartne
+    liste (in članstva), učenci in discipline pa ostanejo. Teče na LOČENI
+    začasni bazi (subprocess), da ne vpliva na ostale teste."""
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-izbrisi-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, json\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "with TestClient(app) as c:\n"
+        "    c.post('/start-lists/generate')\n"
+        "    print('PRED', len(c.get('/start-lists').json()))\n"
+        "    r = c.delete('/start-lists')\n"
+        "    j = r.json()\n"
+        "    print('BRISANJE', r.status_code, j.get('deleted'), j.get('message', ''))\n"
+        "    print('PO', len(c.get('/start-lists').json()))\n"
+        "    print('UCENCI', len(c.get('/pupils').json()))\n"
+        "    print('DISCIPLINE', len(c.get('/disciplines').json()))\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=120, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    assert "PRED 16" in p.stdout, p.stdout + p.stderr
+    assert "BRISANJE 200 16" in p.stdout, \
+        f"gumb mora izbrisati 16 list:\n{p.stdout}\n{p.stderr}"
+    assert "PO 0" in p.stdout, f"po izbrisu mora biti 0 list:\n{p.stdout}\n{p.stderr}"
+    assert "UCENCI 120" in p.stdout, f"učenci morajo OSTATI:\n{p.stdout}\n{p.stderr}"
+    assert "DISCIPLINE 4" in p.stdout, f"discipline morajo OSTATI:\n{p.stdout}\n{p.stderr}"

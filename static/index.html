@@ -242,6 +242,7 @@
     <p class="opis">Po uvozu vseh podatkov kliknite gumb in iz vpisanih disciplin nastane vseh 16 štartnih list (4 discipline × 2 razreda × 2 spola).</p>
     <div class="vrstica-gumbov">
       <button class="gumb gumb-zelen" onclick="ustvariStartneListe()">🔄 Ustvari štartne liste (vseh 16)</button>
+      <button class="gumb gumb-rdec" onclick="izbrisiVseStartne()">🗑️ Izbriši štartne liste</button>
     </div>
     <table class="sortable">
       <thead><tr><th>Disciplina</th><th>Razred</th><th>Datum</th><th></th></tr></thead>
@@ -1335,6 +1336,14 @@ function izbrisiStartno(id){
   if (!confirm('Ali res želite izbrisati to štartno listo?')) return;
   api('/start-lists/' + id, 'DELETE').then(function(){
     toast('Štartna lista izbrisana.', 'ok');
+    natovoriStartne();
+  }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
+}
+
+function izbrisiVseStartne(){
+  if (!confirm('Ali res želite izbrisati VSE štartne liste?')) return;
+  api('/start-lists', 'DELETE').then(function(r){
+    toast(r.message || 'Štartne liste izbrisane.', 'ok');
     natovoriStartne();
   }).catch(function(e){ toast('Napaka: ' + e.message, 'napaka'); });
 }
