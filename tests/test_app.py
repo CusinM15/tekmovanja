@@ -958,6 +958,54 @@ def test_results_pdf_vrstni_red_in_rekordi_po_vzoru_docx():
     assert "(" in s19 and "202" in s19, "rekord z letnico v oklepaju"
 
 
+def test_results_pdf_met_zdruzi_poskuse_na_najboljsega():
+    """PDF REZULTATOV — met vorteksa/skok v daljino: če ima učenec VEČ poskusov
+    (več eventov), se v skupini prikaže SAMO NAJBOLJŠI (1×), ne vsi 3 in ne
+    zadnji. Teče na ločeni začasni bazi (subprocess)."""
+    if shutil.which("pdfinfo") is None or shutil.which("pdftotext") is None:
+        pytest.skip("pdfinfo/pdftotext nista na voljo")
+    import base64
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-met-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, base64\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "from app.database import get_session\n"
+        "from app.models import Pupil, CompetitionEvent\n"
+        "db = get_session()\n"
+        "# učenec 2.r M dobi 3 poskuste v met vorteksa (disc 4): 8.0, 12.0, 9.0\n"
+        "u = db.query(Pupil).filter(Pupil.grade=='2.r', Pupil.gender=='M').first()\n"
+        "for ev in db.query(CompetitionEvent).filter(\n"
+        "        CompetitionEvent.pupil_id==u.id, CompetitionEvent.discipline_id==4).all():\n"
+        "    db.delete(ev)\n"
+        "db.add(CompetitionEvent(pupil_id=u.id, discipline_id=4, time=8.0, position=1))\n"
+        "db.add(CompetitionEvent(pupil_id=u.id, discipline_id=4, time=12.0, position=2))\n"
+        "db.add(CompetitionEvent(pupil_id=u.id, discipline_id=4, time=9.0, position=3))\n"
+        "db.commit(); db.close()\n"
+        "with TestClient(app) as c:\n"
+        "    r = c.get('/results-pdf')\n"
+        "    print('STATUS', r.status_code)\n"
+        "    print('PDF', base64.b64encode(r.content).decode())\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=180, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    assert "STATUS 200" in p.stdout, p.stdout + p.stderr
+    pdf_data = base64.b64decode([l for l in p.stdout.splitlines() if l.startswith("PDF ")][0][4:])
+    assert pdf_data.startswith(b"%PDF")
+    pdf = os.path.join(os.path.dirname(db_path), "r.pdf")
+    with open(pdf, "wb") as f:
+        f.write(pdf_data)
+    pt = subprocess.run(["pdftotext", pdf, "-"], capture_output=True, text=True)
+    t = pt.stdout
+    # najboljši poskus (12.0 → "12,00 cm") je vključen, šibkejši (8.0) NI
+    assert "12,00 cm" in t, f"najboljši poskus met mora biti prikazan:\n{t}"
+    assert "8,00 cm" not in t, f"šibkejši poskus met NE sme biti prikazan:\n{t}"
+
+
 def test_results_pdf_16_skupin_tudi_z_negenericnimi_imena_disciplin():
     """PDF REZULTATOV mora prikazati vseh 16 skupin tudi takrat, ko imajo
     discipline v bazi POLJUBNA imena (ne privzetih 'tek 60m'...). Skupine se

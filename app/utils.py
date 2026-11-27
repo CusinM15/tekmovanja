@@ -688,15 +688,24 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     # ── 3–18. REZULTATI PO SKUPINAH (16 skupin, ena stran na skupino) ──
     for did, raz, spol in skupine:
         ime = _disc_ime(next((ev for ev in events if ev.discipline and ev.discipline_id == did), None), did)
-        rez = {ev.pupil_id: ev for ev in events
-               if ev.discipline_id == did and ev.pupil
-               and ev.pupil.grade == raz and ev.pupil.gender == spol}
+        from app.models import disciplina_smer as _dsmer
+        smer = _dsmer(ime)
+        # Rezultati po učencu (met/skok ima lahko VEČ poskusov = več eventov).
+        # Za vsakega učenca vzamemo SAMO NAJBOLJŠI poskus (dolžina/čas po smeri),
+        # da se učenec ne ponavlja in tabela pokaže pravi (najboljši) rezultat.
+        def _best(evs):
+            return max(evs, key=lambda e: e.time) if smer == "higher" else min(evs, key=lambda e: e.time)
+        rez = {}
+        for ev in events:
+            if ev.discipline_id == did and ev.pupil \
+                    and ev.pupil.grade == raz and ev.pupil.gender == spol:
+                rez.setdefault(ev.pupil_id, []).append(ev)
         _prijav = prijavljeni.get((did, raz, spol), {})
-        from app.models import disciplina_smer
         # Prijavljeni učenci (registrirani) te skupine, tudi tisti brez rezultata.
         ucenci = []
-        for ev in rez.values():
-            ucenci.append((ev.pupil_id, ev.pupil, ev))
+        for pid, evs in rez.items():
+            best = _best(evs)
+            ucenci.append((pid, best.pupil, best))
         for pid, p in _prijav.items():
             if pid not in rez:
                 ucenci.append((pid, p, None))
@@ -705,7 +714,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
             pid, p, ev = k
             if ev is None or ev.time is None:
                 return (1, 0)
-            return (0, ev.time if disciplina_smer(ime) == "lower" else -ev.time)
+            return (0, ev.time if smer == "lower" else -ev.time)
         ucenci.sort(key=_sort)
         elems.append(Paragraph(f"{ime} — {spol_ime(spol)}, {raz}", styles["Heading2"]))
         if not ucenci:
@@ -722,7 +731,8 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         for i, (pid, p, ev) in enumerate(ucenci, 1):
             if ev is not None and ev.time is not None:
                 prikaz_mesta = str(i) + "."
-                cas_val = f"{ev.time:.2f} {enota_za_disciplino(ime)}"
+                # vejica, kot v vzoru Rezultati 2025.docx (28,5 m / 10,87)
+                cas_val = f"{ev.time:.2f}".replace(".", ",") + " " + enota_za_disciplino(ime)
                 opombe = (ev.notes or "") or ""
             else:
                 # prijavljen, a brez zabeleženega rezultata — na polju za rezultat
@@ -758,6 +768,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
     def _slika_za_disciplino(ime):
         n = (ime or "").replace("♀", "").replace("♂", "").strip().lower()
         return {"met vorteksa": rekordi_vortex,
+                "skok v daljino": rekordi_deklica,   # skok nima lastne slike → deklica (zamenljivo)
                 "tek 60m": rekordi_stadion,
                 "tek 400m": rekordi_teki}.get(n)
 
@@ -788,20 +799,18 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
         elems.append(Spacer(1, 0.4 * cm))
 
         rek_raz = [r for r in records if getattr(r, "pupil_grade", None) == raz]
-        # disciplina → najboljši rekord za vsak spol (M/Ž)
+        # disciplina → SEZNAM vseh rekordov za vsak spol (M/Ž). Če imata rekord
+        # DVA učenca (npr. deljeno mesto), se prikažeta OBA — ne le najboljši.
         by_disc = {}
         for r in rek_raz:
             ime_r = _rim(r)
-            smer = _disc_smer(ime_r)
             spol_r = (getattr(r, "pupil_gender", None)
                       or (r.pupil.gender if r.pupil else None)) or "?"
-            kljuc = (ime_r, spol_r)
-            stari = by_disc.get(kljuc)
-            if stari is None or r.time is None:
-                if stari is None:
-                    by_disc[kljuc] = r
-            elif (r.time < stari.time if smer == "lower" else r.time > stari.time):
-                by_disc[kljuc] = r
+            by_disc.setdefault((ime_r, spol_r), []).append(r)
+        for k, lst in by_disc.items():
+            sm = _disc_smer(k[0])
+            # najboljši prvi (za "lower" = najnižji čas, za "higher" = najvišji)
+            lst.sort(key=lambda r: r.time if sm == "lower" else -r.time)
         disc_imena = sorted({k[0] for k in by_disc}, key=_disc_po_docx)
 
         if not disc_imena:
@@ -809,7 +818,7 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
             elems.append(PageBreak())
             continue
 
-        # dve koloni (Fantje | Punce), ilustracija discipline levo
+        # dve koloni (Fantje | Punce), ilustracija discipline v prvem stolpcu
         data = [[_cell_par("", font, size=9),
                  _cell_par("Disciplina", font, size=9),
                  _cell_par("Fantje", font, size=9),
@@ -818,17 +827,22 @@ def results_pdf_bytes(events, title="Tekmovanja — rezultati", subtitle="Tekmov
             # slika discipline lepo v PRVEM STOLPCU tabele (znotraj celice)
             img_d = _im(_slika_za_disciplino(ime_d), 1.4 * cm, 1.3 * cm)
             cel_slika = img_d if img_d is not None else _cell_par("", font, size=9)
-            rM = by_disc.get((ime_d, "M"))
-            rZ = by_disc.get((ime_d, "Ž"))
-            def _celica(r):
-                v = _rek_vrednost(r, ime_d)
-                if v is None:
+            def _celica(rek_list):
+                # več rekordov v eni celici (vsak na svoji vrstici) — disciplina 1×
+                if not rek_list:
                     return _cell_par("—", font, size=9)
-                return _cell_par(f"{_rek_ime(r)}, {_rek_sola(r)} — {v}", font, size=9)
+                vrstice = []
+                for r in rek_list:
+                    v = _rek_vrednost(r, ime_d)
+                    if v is not None:
+                        vrstice.append(f"{_rek_ime(r)}, {_rek_sola(r)} — {v}")
+                if not vrstice:
+                    return _cell_par("—", font, size=9)
+                return _cell_par("<br/>".join(vrstice), font, size=9)
             data.append([cel_slika,
                          _cell_par(ime_d, font, size=9),
-                         _celica(rM),
-                         _celica(rZ)])
+                         _celica(by_disc.get((ime_d, "M"), [])),
+                         _celica(by_disc.get((ime_d, "Ž"), []))])
         t_rek = Table(data, repeatRows=1,
                       colWidths=[1.8 * cm, 3.6 * cm, 5.2 * cm, 5.2 * cm])
         t_rek.setStyle(TableStyle([
