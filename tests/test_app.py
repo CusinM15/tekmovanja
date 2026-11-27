@@ -719,10 +719,11 @@ def test_results_pdf_uvodna_stran_in_16_skupin(client):
     # 2. stran: razvrstitev šol po točkah
     assert "Rezultati po šolah" in src
     assert "points_for_position" in src, "točke po šolah se računajo iz mest"
-    # 16 skupin: vsaka disciplina × M/Ž × 2.r/3.r, vsaka na svoji strani
-    assert 'for spol in ("M", "Ž")' in src
-    assert 'for raz in ("2.r", "3.r")' in src
+    # Skupine se gradijo iz dejanskih podatkov v bazi (Pupil.disciplines +
+    # štartne liste + rezultati), vsaka na svoji strani — ne trdo kodirano 4×M/Ž.
+    assert "disc_of_pupil" in src, "skupine se gradijo iz Pupil.disciplines"
     assert "skupine" in src
+    assert 'for raz in ("2.r", "3.r")' in src
     # SUPER STANKO: rekordi, ena stran na razred (2.r nato 3.r)
     assert "SUPER STANKO" in src
     assert '("2.r", "3.r")' in src, "ena stran na razred (2.r in 3.r)"
@@ -955,3 +956,58 @@ def test_results_pdf_vrstni_red_in_rekordi_po_vzoru_docx():
     assert all(p >= 0 for p in poz) and poz == sorted(poz), \
         f"docx vrstni red disciplin v rekordih: {poz}"
     assert "(" in s19 and "202" in s19, "rekord z letnico v oklepaju"
+
+
+def test_results_pdf_16_skupin_tudi_z_negenericnimi_imena_disciplin():
+    """PDF REZULTATOV mora prikazati vseh 16 skupin tudi takrat, ko imajo
+    discipline v bazi POLJUBNA imena (ne privzetih 'tek 60m'...). Skupine se
+    gradijo iz dejanskih podatkov (Pupil.disciplines ID-ji), ne iz imen —
+    prej je ob preimenovanih disciplinah PDF ostal prazen ('podatkov od
+    disciplin ni nikjer'). Teče na ločeni začasni bazi (subprocess)."""
+    if shutil.which("pdfinfo") is None or shutil.which("pdftotext") is None:
+        pytest.skip("pdfinfo/pdftotext nista na voljo")
+    import base64
+    db_path = os.path.join(tempfile.mkdtemp(prefix="tekmovanja-16d-"), "tekmovanja.db")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = (
+        "import os, base64\n"
+        f"os.environ['TEKMOVANJA_DB'] = {db_path!r}\n"
+        "os.environ['TEKMOVANJA_SEED'] = '1'\n"
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "from app.database import get_session\n"
+        "from app.models import Discipline\n"
+        "# po zagonu (seed naredi 4 privzete) jih preimenujemo v poljubna imena\n"
+        "db = get_session()\n"
+        "for i, naziv in enumerate(['Maraton', 'Skok v višino', 'Štafeta', 'Kros'], 1):\n"
+        "    d = db.query(Discipline).get(i)\n"
+        "    if d: d.name = naziv\n"
+        "db.commit(); db.close()\n"
+        "with TestClient(app) as c:\n"
+        "    r = c.get('/results-pdf')\n"
+        "    print('STATUS', r.status_code, len(r.content))\n"
+        "    print('PDF', base64.b64encode(r.content).decode())\n"
+    )
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=180, cwd=root)
+    assert p.returncode == 0, f"{p.stdout}\n{p.stderr}"
+    assert "STATUS 200" in p.stdout, p.stdout + p.stderr
+    pdf_data = base64.b64decode([l for l in p.stdout.splitlines() if l.startswith("PDF ")][0][4:])
+    assert pdf_data.startswith(b"%PDF")
+    pdf = os.path.join(os.path.dirname(db_path), "r.pdf")
+    with open(pdf, "wb") as f:
+        f.write(pdf_data)
+    pi = subprocess.run(["pdfinfo", pdf], capture_output=True, text=True)
+    pages = [l for l in pi.stdout.splitlines() if l.strip().startswith("Pages")]
+    assert pages and pages[0].split()[-1] == "20", \
+        f"20 strani (uvodna + šole + 16 skupin + 2 rekorda), dobil: {pages}"
+    def stran(n):
+        q = subprocess.run(["pdftotext", "-f", str(n), "-l", str(n), pdf, "-"],
+                           capture_output=True, text=True)
+        return q.stdout
+    s3 = stran(3)
+    assert "2.r" in s3, "stran 3 = 2. razred (skupine se izpišejo)"
+    assert any(x in s3 for x in ("Maraton", "Skok v višino", "Štafeta", "Kros")), \
+        f"preimenovana disciplina je na strani 3, dobil: {s3[:200]}"
+    # razvrstitev šol (stran 2) prav tako ne sme biti prazna
+    assert "Šola" in stran(2) and "Točke" in stran(2), "razvrstitev šol v PDF-ju"
