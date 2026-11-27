@@ -1,0 +1,18 @@
+﻿Disciplina,Leto,Ime Priimek,Šola,Razred,Spol,Rezultat
+met vorteksa,2024,Lian Nuhanović,OŠ Prežihov Voranc,2.r,M,28.5
+met vorteksa,2025,Ema Oblak,OŠ Koroška Bela,2.r,Ž,17
+skok v daljino,2024,Marcel Žemva,OŠ Žirovnica,2.r,M,321
+skok v daljino,2024,Lana Bauman,OŠ Žirovnica,2.r,Ž,288
+tek 60m,2023,Emin Mesić,OŠ Prežihov Voranc,2.r,M,10.45
+tek 60m,2023,Izabela Grgurić,OŠ Tone Čufar,2.r,Ž,10.87
+tek 400m,2025,Žak Jerman,OŠ Tone Čufar,2.r,M,81.21
+tek 400m,2025,Arija Glavaš,OŠ Tone Čufar,2.r,Ž,85.02
+met vorteksa,2023,Matija Medja,OŠ Koroška Bela,3.r,M,33
+met vorteksa,2025,Selena Gluhalić,OŠ 16. decembra Mojstrana,3.r,Ž,22
+skok v daljino,2023,Elvin Mešić,OŠ Prežihov Voranc,3.r,M,331
+skok v daljino,2024,Elen Bektašević,OŠ Koroška Bela,3.r,M,331
+skok v daljino,2024,Sofija Kocet Gril,OŠ Žirovnica,3.r,Ž,345
+tek 60m,2022,Theodor Blažič,OŠ Žirovnica,3.r,M,10.01
+tek 60m,2025,Sofija Bučić,OŠ Prežihov Voranc,3.r,Ž,10.03
+tek 400m,2025,Jakob Vahčić,OŠ Tone Čufar,3.r,M,72.73
+tek 400m,2025,Nika Vilman Oven,OŠ 16. decembra Mojstrana,3.r,Ž,77
